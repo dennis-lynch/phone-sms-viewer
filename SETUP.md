@@ -6,9 +6,14 @@ This guide will help you set up the Phone SMS Viewer application for local devel
 
 Before you begin, ensure you have the following installed:
 
-- **Node.js 20+** (LTS version recommended)
-- **npm** (comes with Node.js) or **yarn**
+- **Node.js 20+ or 24+** (LTS version recommended - v24.12+ tested and working)
+- **npm 11+** (comes with Node.js)
 - **Git** (for cloning the repository)
+
+### For Windows (Required for better-sqlite3 native compilation fallback):
+- **Visual Studio Build Tools 2022** with Desktop development with C++ workload
+  - Or Visual Studio 2022 Community Edition
+  - The prebuilt binaries should work, but these are needed if compilation is required
 
 ## Installation Steps
 

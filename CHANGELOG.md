@@ -16,13 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive documentation (SETUP.md, CLAUDE.md)
 
 ### Changed
-- Upgraded ESLint from v8 to v9 to resolve deprecation warnings
-- Migrated to ESLint flat config format (eslint.config.mjs)
-- Upgraded Electron from v28 to v36 (fixes ASAR integrity bypass vulnerability)
-- Upgraded esbuild from v0.19 to v0.27 (fixes development server security issue)
-- Upgraded better-sqlite3 from v9 to v12 (latest version with better Windows prebuilt binaries)
-- Updated all dependencies to latest versions for security and compatibility
-- Added .npmrc configuration to prefer prebuilt binaries and use MSVC toolset
+- **MAJOR:** Upgraded React from v18 to v19 (latest major version with improved performance)
+- **MAJOR:** Upgraded Tailwind CSS from v3 to v4 (CSS-first configuration, better performance)
+- **MAJOR:** Upgraded Vite from v5 to v7 (faster builds and HMR)
+- **MAJOR:** Upgraded Electron from v28 to v39 (latest, fixes ASAR integrity bypass vulnerability)
+- **MAJOR:** Upgraded electron-builder from v25 to v26 (latest major version)
+- Upgraded ESLint from v8 to v9 (latest) with flat config format (eslint.config.mjs)
+- Upgraded esbuild from v0.19 to v0.27 (latest, fixes development server security issue)
+- Upgraded better-sqlite3 from v9 to v12 (latest with better Windows prebuilt binaries)
+- Upgraded TypeScript from v5.3 to v5.9 (latest)
+- Upgraded Zustand from v4 to v5 (latest state management)
+- Upgraded all @types packages to match new React 19 and latest versions
+- Updated all other dependencies to absolute latest stable versions
+- Migrated Tailwind config to v4 CSS-first format with `@import "tailwindcss"`
+- Added .npmrc configuration for legacy peer deps compatibility
 
 ## [0.1.0] - TBD
 
