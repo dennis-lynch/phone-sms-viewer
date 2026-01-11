@@ -5,6 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 Phone SMS Viewer is a cross-platform desktop application (Windows/Linux) built with Electron + TypeScript + React to browse and search SMS and call log backups from "SMS Backup & Restore Pro" Android app.
+## IMPORTANT: USE LATEST EXTERNAL LIBRARIES
+Always use the latest up-to-date libraries for dependencies.  Do not use older versions that may be deprecated or buggy.  Search the web for the newest versions if needed.
 
 ## Commands
 
@@ -96,9 +98,9 @@ For performance with 20k+ messages:
 - **PATCH** (0.0.x): Bug fixes, backwards compatible
 
 Follow the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format:
-- Add entry under `[Unreleased]` section
+- Add entry under new version number.  Use semantic versioning to increase the number as appropriate (MAJOR, MINOR, PATCH)
 - Use categories: Added, Changed, Deprecated, Removed, Fixed, Security
-- When releasing, move entries from Unreleased to new version section
+
 
 Example:
 ```markdown
