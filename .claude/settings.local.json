@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm view:*)"
+      "Bash(npm view:*)",
+      "Bash(npm outdated:*)",
+      "Bash(npx npm-check-updates:*)",
+      "Bash(npm install:*)",
+      "Bash(npm audit:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npm run lint:*)"
     ]
   }
 }
