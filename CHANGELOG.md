@@ -14,6 +14,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TypeScript configuration for strict type checking
 - ESLint 9 with flat config format for code quality
 - Comprehensive documentation (SETUP.md, CLAUDE.md)
+- **Phase 1: Core Data Layer**
+  - SQLite database schema with FTS5 full-text search support
+  - Database connection manager with WAL mode and optimizations
+  - Prepared queries for messages, calls, conversations, and search
+  - SMS/MMS XML streaming parser using SAX for memory-efficient parsing
+  - Call log XML streaming parser
+  - ZIP file extractor for backup archives
+  - Phone number normalization to E.164 format
+  - HTML entity decoder for message bodies (emoji, special characters)
+  - Message deduplication using SHA-256 hash + timestamp + phone composite key
+  - Shared TypeScript types for main/renderer processes
 
 ### Changed
 - **MAJOR:** Upgraded React from v18 to v19 (latest major version with improved performance)

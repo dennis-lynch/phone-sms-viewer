@@ -7,7 +7,10 @@
       "Bash(npm install:*)",
       "Bash(npm audit:*)",
       "Bash(npm run type-check:*)",
-      "Bash(npm run lint:*)"
+      "Bash(npm run lint:*)",
+      "Bash(dir:*)",
+      "Bash(npm run build:main:*)",
+      "Bash(npm run build:preload:*)"
     ]
   }
 }

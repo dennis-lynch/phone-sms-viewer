@@ -1,0 +1,329 @@
+/**
+ * Calls XML Streaming Parser
+ *
+ * Parses SMS Backup & Restore Pro call log XML files using streaming SAX parser.
+ */
+
+import * as fs from 'fs';
+import * as sax from 'sax';
+import { EventEmitter } from 'events';
+import { normalizePhoneNumber } from '../utils/phone-normalizer';
+import { processMessageBody } from '../utils/html-entities';
+import {
+  getOrCreateConversation,
+  insertCallsBatch,
+  updateAllConversationStats,
+  recordImport,
+} from '../database/queries';
+import { withTransaction } from '../database/database';
+import type { Call, ImportProgress, ImportResult, ImportMetadata, CallType, CallTypeLabel } from '../../shared/types';
+
+// Batch size for database inserts
+const BATCH_SIZE = 500;
+
+// Progress event interval
+const PROGRESS_INTERVAL = 500;
+
+export interface CallsParserOptions {
+  filePath: string;
+  onProgress?: (progress: ImportProgress) => void;
+}
+
+export interface CallsBackupInfo {
+  count: number;
+  backupSet: string;
+  backupDate: number;
+}
+
+/**
+ * Maps call type codes to labels
+ */
+function getCallTypeLabel(type: number): CallTypeLabel {
+  switch (type) {
+    case 1:
+      return 'incoming';
+    case 2:
+      return 'outgoing';
+    case 3:
+      return 'missed';
+    case 5:
+      return 'rejected';
+    default:
+      return 'incoming'; // Default to incoming for unknown types
+  }
+}
+
+/**
+ * Validates call type
+ */
+function isValidCallType(type: number): type is CallType {
+  return type === 1 || type === 2 || type === 3 || type === 5;
+}
+
+/**
+ * Calls Parser class - parses call log backup XML files
+ */
+export class CallsParser extends EventEmitter {
+  private filePath: string;
+  private onProgress?: (progress: ImportProgress) => void;
+  private aborted = false;
+
+  constructor(options: CallsParserOptions) {
+    super();
+    this.filePath = options.filePath;
+    this.onProgress = options.onProgress;
+  }
+
+  /**
+   * Aborts the current parsing operation
+   */
+  abort(): void {
+    this.aborted = true;
+  }
+
+  /**
+   * Parses the XML file and imports calls into the database
+   */
+  async parse(): Promise<ImportResult> {
+    return new Promise((resolve, reject) => {
+      const result: ImportResult = {
+        success: false,
+        filePath: this.filePath,
+        totalParsed: 0,
+        messagesImported: 0,
+        callsImported: 0,
+        duplicatesSkipped: 0,
+        errors: [],
+        conversationsCreated: 0,
+      };
+
+      let backupInfo: CallsBackupInfo | null = null;
+      const callBatch: Call[] = [];
+      let lastProgressTime = Date.now();
+
+      // Create SAX parser (strict mode)
+      const parser = sax.createStream(true, {
+        trim: true,
+        normalize: true,
+      });
+
+      const emitProgress = (phase: ImportProgress['phase']) => {
+        const now = Date.now();
+        if (now - lastProgressTime >= PROGRESS_INTERVAL || phase === 'complete') {
+          lastProgressTime = now;
+          this.onProgress?.({
+            phase,
+            current: result.totalParsed,
+            total: backupInfo?.count || 0,
+            messagesImported: result.callsImported, // Use callsImported for calls
+            duplicatesSkipped: result.duplicatesSkipped,
+            errors: result.errors.length,
+          });
+        }
+      };
+
+      const flushBatch = () => {
+        if (callBatch.length === 0) return;
+
+        try {
+          const inserted = withTransaction(() => insertCallsBatch(callBatch));
+          result.callsImported += inserted;
+          result.duplicatesSkipped += callBatch.length - inserted;
+        } catch (error) {
+          result.errors.push(`Batch insert failed: ${error}`);
+        }
+
+        callBatch.length = 0;
+      };
+
+      // Handle opening tags
+      parser.on('opentag', (node: sax.Tag) => {
+        if (this.aborted) {
+          parser.end();
+          return;
+        }
+
+        // Parse root element for backup info
+        if (node.name === 'calls') {
+          backupInfo = {
+            count: parseInt(node.attributes.count as string, 10) || 0,
+            backupSet: (node.attributes.backup_set as string) || '',
+            backupDate: parseInt(node.attributes.backup_date as string, 10) || 0,
+          };
+          return;
+        }
+
+        // Parse call elements
+        if (node.name === 'call') {
+          result.totalParsed++;
+
+          try {
+            const number = (node.attributes.number as string) || '';
+            const durationStr = (node.attributes.duration as string) || '0';
+            const dateStr = (node.attributes.date as string) || '0';
+            const typeStr = (node.attributes.type as string) || '1';
+            const contactName = processMessageBody((node.attributes.contact_name as string) || '');
+
+            const timestamp = parseInt(dateStr, 10);
+            const duration = parseInt(durationStr, 10);
+            const typeNum = parseInt(typeStr, 10);
+            const type: CallType = isValidCallType(typeNum) ? typeNum : 1;
+            const typeLabel = getCallTypeLabel(type);
+            const normalizedPhone = normalizePhoneNumber(number);
+
+            // Get or create conversation for linking
+            let conversationId: number | undefined;
+            if (normalizedPhone) {
+              conversationId = getOrCreateConversation(
+                normalizedPhone,
+                number,
+                contactName
+              );
+            }
+
+            const call: Call = {
+              conversationId,
+              phoneNumber: number,
+              normalizedPhone,
+              contactName: contactName || '',
+              timestamp,
+              duration,
+              type,
+              typeLabel,
+            };
+
+            callBatch.push(call);
+
+            // Flush batch when full
+            if (callBatch.length >= BATCH_SIZE) {
+              flushBatch();
+              emitProgress('inserting');
+            }
+          } catch (error) {
+            result.errors.push(`Failed to parse call: ${error}`);
+          }
+        }
+      });
+
+      // Handle errors
+      parser.on('error', (error: Error) => {
+        result.errors.push(`Parse error: ${error.message}`);
+        // Continue parsing despite errors
+        parser.resume();
+      });
+
+      // Handle end of parsing
+      parser.on('end', () => {
+        // Flush remaining calls
+        flushBatch();
+
+        // Update conversation statistics
+        emitProgress('grouping');
+        try {
+          updateAllConversationStats();
+        } catch (error) {
+          result.errors.push(`Failed to update conversation stats: ${error}`);
+        }
+
+        // Record import metadata
+        if (backupInfo) {
+          try {
+            const metadata: ImportMetadata = {
+              filePath: this.filePath,
+              backupSet: backupInfo.backupSet,
+              backupDate: backupInfo.backupDate,
+              importDate: Date.now(),
+              messageCount: 0,
+              callCount: result.callsImported,
+              type: 'calls',
+            };
+            recordImport(metadata);
+          } catch (error) {
+            result.errors.push(`Failed to record import metadata: ${error}`);
+          }
+        }
+
+        result.success = result.errors.length === 0;
+        emitProgress('complete');
+        resolve(result);
+      });
+
+      // Start parsing
+      try {
+        const fileStream = fs.createReadStream(this.filePath, { encoding: 'utf8' });
+
+        fileStream.on('error', (error) => {
+          result.errors.push(`File read error: ${error.message}`);
+          result.success = false;
+          reject(error);
+        });
+
+        fileStream.pipe(parser);
+      } catch (error) {
+        result.errors.push(`Failed to open file: ${error}`);
+        result.success = false;
+        reject(error);
+      }
+    });
+  }
+}
+
+/**
+ * Convenience function to parse a calls backup file
+ */
+export async function parseCallsBackup(
+  filePath: string,
+  onProgress?: (progress: ImportProgress) => void
+): Promise<ImportResult> {
+  const parser = new CallsParser({ filePath, onProgress });
+  return parser.parse();
+}
+
+/**
+ * Reads backup info from a calls XML file without importing
+ */
+export function getCallsBackupInfo(filePath: string): Promise<CallsBackupInfo | null> {
+  return new Promise((resolve) => {
+    const parser = sax.createStream(true, { trim: true });
+    let backupInfo: CallsBackupInfo | null = null;
+
+    parser.on('opentag', (node: sax.Tag) => {
+      if (node.name === 'calls') {
+        backupInfo = {
+          count: parseInt(node.attributes.count as string, 10) || 0,
+          backupSet: (node.attributes.backup_set as string) || '',
+          backupDate: parseInt(node.attributes.backup_date as string, 10) || 0,
+        };
+        // We have what we need, stop parsing
+        parser.end();
+      }
+    });
+
+    parser.on('end', () => resolve(backupInfo));
+    parser.on('error', () => resolve(null));
+
+    // Only read first 4KB to get root element
+    const stream = fs.createReadStream(filePath, { encoding: 'utf8', end: 4096 });
+    stream.pipe(parser);
+  });
+}
+
+/**
+ * Formats a call duration for display (e.g., "1m 23s")
+ */
+export function formatDuration(seconds: number): string {
+  if (seconds === 0) {
+    return '0s';
+  }
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+  return parts.join(' ');
+}
