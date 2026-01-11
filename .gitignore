@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+release/
+out/
+
+# Database files
+*.db
+*.db-wal
+*.db-shm
+
+# Environment
+.env
+.env.local
+
+# Temp files
+*.log
+*.tmp
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Package lock
+package-lock.json
+
+# Keep examples directory but ignore its contents
+examples/*
+!examples/.gitkeep
