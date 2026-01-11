@@ -19,9 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgraded ESLint from v8 to v9 to resolve deprecation warnings
 - Migrated to ESLint flat config format (eslint.config.mjs)
 - Upgraded Electron from v28 to v36 (fixes ASAR integrity bypass vulnerability)
-- Upgraded esbuild from v0.19 to v0.24 (fixes development server security issue)
-- Upgraded better-sqlite3 from v9 to v11 (fixes C++20 build compatibility with Node.js 24)
+- Upgraded esbuild from v0.19 to v0.27 (fixes development server security issue)
+- Upgraded better-sqlite3 from v9 to v12 (latest version with better Windows prebuilt binaries)
 - Updated all dependencies to latest versions for security and compatibility
+- Added .npmrc configuration to prefer prebuilt binaries and use MSVC toolset
 
 ## [0.1.0] - TBD
 
