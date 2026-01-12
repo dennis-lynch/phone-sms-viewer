@@ -5,12 +5,14 @@
  * initial data loading.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { useAppStore } from './store/appStore';
+import { useSearchStore } from './store/searchStore';
 import { ImportProgressModal } from './components/import/ImportProgressModal';
 import { AppLayout, Header, StatusBar } from './components/layout/AppLayout';
 import { ConversationList } from './components/conversations/ConversationList';
 import { MessageThread } from './components/messages/MessageThread';
+import { SearchPanel } from './components/search';
 import * as fileService from './services/fileService';
 
 export function App() {
@@ -24,11 +26,35 @@ export function App() {
     startMultiImport,
   } = useAppStore();
 
+  const { isSearchOpen, openSearch, closeSearch } = useSearchStore();
+
   // Load initial data
   useEffect(() => {
     loadConversations();
     loadStats();
   }, [loadConversations, loadStats]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl+F to open search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        if (isSearchOpen) {
+          closeSearch();
+        } else {
+          openSearch();
+        }
+      }
+      // Escape to close search
+      if (e.key === 'Escape' && isSearchOpen) {
+        closeSearch();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSearchOpen, openSearch, closeSearch]);
 
   // Handle opening a single file
   const handleOpenFile = async () => {
@@ -67,6 +93,28 @@ export function App() {
       title="Phone SMS Viewer"
       actions={
         <>
+          {/* Search button */}
+          <button
+            onClick={() => (isSearchOpen ? closeSearch() : openSearch())}
+            className={`p-2 rounded-md transition-colors ${
+              isSearchOpen
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+            }`}
+            title="Search (Ctrl+F)"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </button>
+
+          <div className="w-px h-6 bg-gray-700" />
+
           <button
             onClick={handleOpenFile}
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors"
@@ -116,8 +164,10 @@ export function App() {
     <ConversationList />
   );
 
-  // Main content
-  const mainContent = showEmptyState ? (
+  // Main content - show search panel when search is open
+  const mainContent = isSearchOpen ? (
+    <SearchPanel onClose={closeSearch} />
+  ) : showEmptyState ? (
     <EmptyState onOpenFile={handleOpenFile} />
   ) : (
     <MessageThread />

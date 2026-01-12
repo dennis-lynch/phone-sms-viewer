@@ -62,6 +62,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Messages cleared when switching conversations
     - Conversation list limited to 1000 by default
     - Lazy loading with 500 messages per page
+- **Phase 5: Search Functionality**
+  - Zustand search store for managing search state and filters
+  - SearchBar component with 300ms debounced input
+    - Auto-search on typing with debounce
+    - Immediate search on Enter key
+    - Clear button to reset search
+    - Regex toggle for regular expression patterns
+  - SearchFilters component for advanced filtering
+    - Date range picker (start and end dates)
+    - Message direction filter (All/Sent/Received)
+    - Apply and Clear buttons
+  - SearchResults component with virtualized list
+    - FTS5 full-text search with highlighted matches
+    - REGEXP support for regex patterns
+    - Results show contact name, message body, timestamp, and direction
+    - Click to navigate to conversation
+    - Virtualized for performance with large result sets
+  - SearchPanel combining all search components
+  - Keyboard shortcuts
+    - Ctrl/Cmd+F to toggle search panel
+    - Escape to close search
+  - Search button in header toolbar
 
 ### Changed
 - **MAJOR:** Upgraded React from v18 to v19 (latest major version with improved performance)

@@ -97,6 +97,8 @@ For performance with 20k+ messages:
 - **MINOR** (0.x.0): New features, backwards compatible
 - **PATCH** (0.0.x): Bug fixes, backwards compatible
 
+Every prompt that generates changes should increase the semantic version number.
+
 Follow the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format:
 - Add entry under new version number.  Use semantic versioning to increase the number as appropriate (MAJOR, MINOR, PATCH)
 - Use categories: Added, Changed, Deprecated, Removed, Fixed, Security
