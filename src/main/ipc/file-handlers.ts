@@ -15,6 +15,7 @@ import {
   cleanupTempFiles,
   scanDirectoryForBackups,
 } from '../parsers/zip-extractor';
+import { analyzeDatabase } from '../database/database';
 import type { ImportProgress } from '../../shared/types';
 
 // Track active import for cancellation
@@ -163,6 +164,15 @@ export function registerFileHandlers(mainWindow: BrowserWindow): void {
       }
     }
 
+    // Run ANALYZE after successful import to optimize query performance
+    if (result.success) {
+      try {
+        analyzeDatabase();
+      } catch {
+        // Ignore ANALYZE errors - not critical
+      }
+    }
+
     return result;
   });
 
@@ -255,6 +265,15 @@ export function registerFileHandlers(mainWindow: BrowserWindow): void {
         totalMessages += result.messagesImported || 0;
         totalCalls += result.callsImported || 0;
         totalDuplicates += result.duplicatesSkipped || 0;
+      }
+    }
+
+    // Run ANALYZE after all imports to optimize query performance
+    if (totalMessages > 0 || totalCalls > 0) {
+      try {
+        analyzeDatabase();
+      } catch {
+        // Ignore ANALYZE errors - not critical
       }
     }
 

@@ -1,13 +1,18 @@
 /**
  * Conversation List Component
  *
- * Displays a scrollable list of conversations.
+ * Displays a virtualized scrollable list of conversations.
  * Handles selection and provides search filtering.
+ * Uses TanStack Virtual for smooth scrolling with large datasets.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../../store/appStore';
 import { ConversationItem, ConversationItemSkeleton } from './ConversationItem';
+
+const ITEM_HEIGHT = 72; // Estimated height of each conversation item
+const OVERSCAN = 10; // Number of items to render outside visible area
 
 export function ConversationList() {
   const {
@@ -19,6 +24,7 @@ export function ConversationList() {
   } = useAppStore();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const parentRef = useRef<HTMLDivElement>(null);
 
   // Filter conversations based on search query
   const filteredConversations = useMemo(() => {
@@ -34,6 +40,14 @@ export function ConversationList() {
         conv.normalizedPhone.includes(query)
     );
   }, [conversations, searchQuery]);
+
+  // Set up virtualizer
+  const virtualizer = useVirtualizer({
+    count: filteredConversations.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ITEM_HEIGHT,
+    overscan: OVERSCAN,
+  });
 
   // Handle conversation selection
   const handleSelect = (conversationId: number) => {
@@ -84,7 +98,7 @@ export function ConversationList() {
       </div>
 
       {/* Conversation list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" ref={parentRef}>
         {/* Loading state */}
         {conversationsLoading && conversations.length === 0 && (
           <div className="divide-y divide-gray-700">
@@ -120,17 +134,37 @@ export function ConversationList() {
             </div>
           )}
 
-        {/* Conversation items */}
+        {/* Virtualized conversation items */}
         {filteredConversations.length > 0 && (
-          <div className="divide-y divide-gray-700/50">
-            {filteredConversations.map((conversation) => (
-              <ConversationItem
-                key={conversation.id}
-                conversation={conversation}
-                isSelected={selectedConversationId === conversation.id}
-                onClick={() => handleSelect(conversation.id!)}
-              />
-            ))}
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const conversation = filteredConversations[virtualRow.index];
+              return (
+                <div
+                  key={conversation.id}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <ConversationItem
+                    conversation={conversation}
+                    isSelected={selectedConversationId === conversation.id}
+                    onClick={() => handleSelect(conversation.id!)}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

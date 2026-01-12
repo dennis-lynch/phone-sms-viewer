@@ -1,53 +1,66 @@
 /**
  * Message Thread Component
  *
- * Displays messages for the selected conversation with:
+ * Displays virtualized messages for the selected conversation with:
  * - Header with contact name and phone number
- * - Scrollable message list with date separators
+ * - Virtualized scrollable message list with date separators
  * - Auto-scroll to bottom on load
  * - Load more button for older messages
+ * - Dynamic height measurement for variable-length messages
  */
 
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../../store/appStore';
 import { MessageBubble, DateSeparator, MessageBubbleSkeleton } from './MessageBubble';
 import type { Message } from '../../../shared/types';
 
-/**
- * Groups messages by date for display with separators
- */
-interface MessageGroup {
-  date: Date;
-  messages: Message[];
-}
+const OVERSCAN = 20; // Number of items to render outside visible area
+const ESTIMATED_MESSAGE_HEIGHT = 80; // Estimated height for messages
+const DATE_SEPARATOR_HEIGHT = 48; // Fixed height for date separators
 
-function groupMessagesByDate(messages: Message[]): MessageGroup[] {
-  const groups: MessageGroup[] = [];
-  let currentGroup: MessageGroup | null = null;
+/**
+ * Represents an item in the virtualized list (either a message or date separator)
+ */
+type VirtualItem =
+  | { type: 'date-separator'; date: Date; key: string }
+  | { type: 'message'; message: Message; key: string };
+
+/**
+ * Flattens messages into a list of virtual items with date separators
+ */
+function createVirtualItems(messages: Message[]): VirtualItem[] {
+  const items: VirtualItem[] = [];
+  let currentDateKey = '';
 
   for (const message of messages) {
     const messageDate = new Date(message.timestamp);
     const dateKey = messageDate.toDateString();
 
-    if (!currentGroup || currentGroup.date.toDateString() !== dateKey) {
-      currentGroup = {
-        date: new Date(messageDate.setHours(0, 0, 0, 0)),
-        messages: [],
-      };
-      groups.push(currentGroup);
+    // Add date separator if this is a new date
+    if (dateKey !== currentDateKey) {
+      currentDateKey = dateKey;
+      items.push({
+        type: 'date-separator',
+        date: new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate()),
+        key: `date-${dateKey}`,
+      });
     }
 
-    currentGroup.messages.push(message);
+    items.push({
+      type: 'message',
+      message,
+      key: `msg-${message.id}`,
+    });
   }
 
-  return groups;
+  return items;
 }
 
 /**
  * Format phone number for display
  */
 function formatPhone(phone: string): string {
-  // Simple formatting - add proper library if needed
   const digits = phone.replace(/\D/g, '');
   if (digits.length === 11 && digits.startsWith('1')) {
     const local = digits.slice(1);
@@ -69,30 +82,58 @@ export function MessageThread() {
     loadMoreMessages,
   } = useAppStore();
 
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const parentRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
+  const prevMessageCount = useRef(0);
 
   // Get current conversation
   const conversation = useMemo(() => {
     return conversations.find((c) => c.id === selectedConversationId);
   }, [conversations, selectedConversationId]);
 
-  // Group messages by date
-  const messageGroups = useMemo(() => {
-    return groupMessagesByDate(messages);
+  // Create flat list of virtual items
+  const virtualItems = useMemo(() => {
+    return createVirtualItems(messages);
   }, [messages]);
 
-  // Scroll to bottom on initial load
+  // Estimate item size based on type
+  const estimateSize = useCallback((index: number) => {
+    const item = virtualItems[index];
+    if (!item) return ESTIMATED_MESSAGE_HEIGHT;
+    return item.type === 'date-separator' ? DATE_SEPARATOR_HEIGHT : ESTIMATED_MESSAGE_HEIGHT;
+  }, [virtualItems]);
+
+  // Set up virtualizer
+  const virtualizer = useVirtualizer({
+    count: virtualItems.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize,
+    overscan: OVERSCAN,
+  });
+
+  // Scroll to bottom on initial load or when new messages arrive at the end
   useEffect(() => {
-    if (isInitialLoad.current && messages.length > 0 && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      isInitialLoad.current = false;
+    if (messages.length > 0 && parentRef.current) {
+      const isNewConversation = isInitialLoad.current;
+      const hasNewMessages = messages.length > prevMessageCount.current;
+
+      if (isNewConversation) {
+        // Scroll to bottom for new conversation
+        virtualizer.scrollToIndex(virtualItems.length - 1, { align: 'end' });
+        isInitialLoad.current = false;
+      } else if (hasNewMessages && !hasMoreMessages) {
+        // If messages were added at the end (not loaded from top), scroll to bottom
+        virtualizer.scrollToIndex(virtualItems.length - 1, { align: 'end' });
+      }
+
+      prevMessageCount.current = messages.length;
     }
-  }, [messages]);
+  }, [messages, virtualItems.length, hasMoreMessages, virtualizer]);
 
   // Reset initial load flag when conversation changes
   useEffect(() => {
     isInitialLoad.current = true;
+    prevMessageCount.current = 0;
   }, [selectedConversationId]);
 
   // No conversation selected
@@ -151,23 +192,10 @@ export function MessageThread() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4" ref={scrollRef}>
-        {/* Load more button */}
-        {hasMoreMessages && (
-          <div className="flex justify-center mb-4">
-            <button
-              onClick={loadMoreMessages}
-              disabled={messagesLoading}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-md text-sm text-gray-300 transition-colors"
-            >
-              {messagesLoading ? 'Loading...' : 'Load earlier messages'}
-            </button>
-          </div>
-        )}
-
+      <div className="flex-1 overflow-y-auto" ref={parentRef}>
         {/* Loading state */}
         {messagesLoading && messages.length === 0 && (
-          <div className="space-y-4">
+          <div className="p-4 space-y-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <MessageBubbleSkeleton key={i} isSent={i % 2 === 1} />
             ))}
@@ -189,17 +217,59 @@ export function MessageThread() {
           </div>
         )}
 
-        {/* Message groups */}
-        {messageGroups.map((group) => (
-          <div key={group.date.toISOString()}>
-            <DateSeparator date={group.date} />
-            <div className="space-y-2">
-              {group.messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
-              ))}
-            </div>
+        {/* Virtualized messages */}
+        {virtualItems.length > 0 && (
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {/* Load more button - positioned at top */}
+            {hasMoreMessages && (
+              <div
+                className="absolute top-0 left-0 right-0 flex justify-center py-4 z-10"
+                style={{ background: 'linear-gradient(to bottom, rgb(17 24 39), transparent)' }}
+              >
+                <button
+                  onClick={loadMoreMessages}
+                  disabled={messagesLoading}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-md text-sm text-gray-300 transition-colors"
+                >
+                  {messagesLoading ? 'Loading...' : 'Load earlier messages'}
+                </button>
+              </div>
+            )}
+
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const item = virtualItems[virtualRow.index];
+              return (
+                <div
+                  key={item.key}
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                  className="px-4"
+                >
+                  {item.type === 'date-separator' ? (
+                    <DateSeparator date={item.date} />
+                  ) : (
+                    <div className="py-1">
+                      <MessageBubble message={item.message} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ))}
+        )}
       </div>
     </div>
   );

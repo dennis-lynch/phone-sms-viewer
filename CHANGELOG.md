@@ -47,6 +47,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Auto-scroll to bottom on conversation load
   - Load more button for older messages with pagination support
   - Skeleton loaders for conversations and messages during loading states
+- **Phase 4: Virtualization & Performance**
+  - Virtualized conversation list using TanStack Virtual (react-virtual)
+    - Fixed 72px item height estimate with 10-item overscan
+    - Smooth scrolling with large conversation lists (1000+)
+  - Virtualized message thread with dynamic height measurement
+    - Variable height support for different message lengths
+    - 20-item overscan for smooth scrolling
+    - Date separators integrated into virtualized list
+  - Database optimization with ANALYZE after imports
+    - Automatic ANALYZE call after single file import
+    - Automatic ANALYZE call after multi-file import batch
+  - Memory management improvements
+    - Messages cleared when switching conversations
+    - Conversation list limited to 1000 by default
+    - Lazy loading with 500 messages per page
 
 ### Changed
 - **MAJOR:** Upgraded React from v18 to v19 (latest major version with improved performance)
