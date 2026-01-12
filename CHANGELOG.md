@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - HTML entity decoder for message bodies (emoji, special characters)
   - Message deduplication using SHA-256 hash + timestamp + phone composite key
   - Shared TypeScript types for main/renderer processes
+- **Phase 2: IPC & File Loading**
+  - Modular IPC handlers for file operations and database queries
+  - Secure preload script exposing electron API to renderer
+  - File service for opening files, directories, and importing backups
+  - Database service wrapper with error handling
+  - Zustand store for application state management
+  - Import progress modal with cancel support
+  - Multi-file import with progress tracking
+  - Empty state UI when no backups are loaded
+  - Basic app layout with header, footer, and status bar
 
 ### Changed
 - **MAJOR:** Upgraded React from v18 to v19 (latest major version with improved performance)
