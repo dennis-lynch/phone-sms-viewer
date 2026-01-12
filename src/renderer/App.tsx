@@ -5,7 +5,7 @@
  * initial data loading.
  */
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from './store/appStore';
 import { useSearchStore } from './store/searchStore';
 import { ImportProgressModal } from './components/import/ImportProgressModal';
@@ -13,7 +13,11 @@ import { AppLayout, Header, StatusBar } from './components/layout/AppLayout';
 import { ConversationList } from './components/conversations/ConversationList';
 import { MessageThread } from './components/messages/MessageThread';
 import { SearchPanel } from './components/search';
+import { ToastContainer } from './components/ui';
+import { SettingsDialog, AboutDialog, ImportHistoryDialog } from './components/settings';
 import * as fileService from './services/fileService';
+
+type DialogType = 'settings' | 'about' | 'history' | null;
 
 export function App() {
   const {
@@ -28,6 +32,9 @@ export function App() {
 
   const { isSearchOpen, openSearch, closeSearch } = useSearchStore();
 
+  // Dialog state
+  const [activeDialog, setActiveDialog] = useState<DialogType>(null);
+
   // Load initial data
   useEffect(() => {
     loadConversations();
@@ -37,6 +44,19 @@ export function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if any dialog is open
+      if (activeDialog) {
+        if (e.key === 'Escape') {
+          setActiveDialog(null);
+        }
+        return;
+      }
+
+      // Cmd/Ctrl+O to open file
+      if ((e.metaKey || e.ctrlKey) && e.key === 'o') {
+        e.preventDefault();
+        handleOpenFile();
+      }
       // Cmd/Ctrl+F to open search
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault();
@@ -46,6 +66,11 @@ export function App() {
           openSearch();
         }
       }
+      // Cmd/Ctrl+, to open settings
+      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+        e.preventDefault();
+        setActiveDialog('settings');
+      }
       // Escape to close search
       if (e.key === 'Escape' && isSearchOpen) {
         closeSearch();
@@ -54,7 +79,7 @@ export function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSearchOpen, openSearch, closeSearch]);
+  }, [isSearchOpen, openSearch, closeSearch, activeDialog]);
 
   // Handle opening a single file
   const handleOpenFile = async () => {
@@ -118,6 +143,7 @@ export function App() {
           <button
             onClick={handleOpenFile}
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors"
+            title="Open File (Ctrl+O)"
           >
             Open File
           </button>
@@ -132,6 +158,62 @@ export function App() {
             className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-md transition-colors"
           >
             Open Folder
+          </button>
+
+          <div className="w-px h-6 bg-gray-700" />
+
+          {/* History button */}
+          <button
+            onClick={() => setActiveDialog('history')}
+            className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+            title="Import History"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </button>
+
+          {/* Settings button */}
+          <button
+            onClick={() => setActiveDialog('settings')}
+            className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+            title="Settings (Ctrl+,)"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+          </button>
+
+          {/* About button */}
+          <button
+            onClick={() => setActiveDialog('about')}
+            className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+            title="About"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
           </button>
         </>
       }
@@ -182,6 +264,18 @@ export function App() {
         statusBar={statusBarContent}
       />
       <ImportProgressModal />
+      <ToastContainer />
+
+      {/* Dialogs */}
+      {activeDialog === 'settings' && (
+        <SettingsDialog onClose={() => setActiveDialog(null)} />
+      )}
+      {activeDialog === 'about' && (
+        <AboutDialog onClose={() => setActiveDialog(null)} />
+      )}
+      {activeDialog === 'history' && (
+        <ImportHistoryDialog onClose={() => setActiveDialog(null)} />
+      )}
     </>
   );
 }

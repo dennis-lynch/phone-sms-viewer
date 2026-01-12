@@ -140,6 +140,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - JSON export with ISO timestamps
     - HTML export with styled message bubbles
     - Save dialog integration
+- **Phase 9: Multi-Backup Support**
+  - Import History dialog showing all imported backups
+    - File path, import date, message/call counts
+    - Type badge (SMS/Calls)
+    - Backup date information
+  - Toolbar button for quick access to import history
+- **Phase 10: Polish & Settings**
+  - Settings dialog with user preferences
+    - Date/time format options (12h/24h)
+    - Date style options (US/EU/ISO)
+    - Theme selection (Dark/Light/System)
+    - Behavior options (message preview, auto-scroll, confirmations)
+  - Settings store with localStorage persistence
+  - About dialog with app information and features list
+  - Toast notification system
+    - Success, error, warning, info toast types
+    - Auto-dismiss with configurable duration
+    - Manual dismiss option
+  - Enhanced keyboard shortcuts
+    - Ctrl/Cmd+O: Open file dialog
+    - Ctrl/Cmd+F: Toggle search panel
+    - Ctrl/Cmd+,: Open settings
+    - Escape: Close dialogs and search
+  - Toolbar buttons for Settings, History, and About dialogs
 
 ### Changed
 - **MAJOR:** Upgraded React from v18 to v19 (latest major version with improved performance)
