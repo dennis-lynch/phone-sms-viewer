@@ -84,6 +84,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Ctrl/Cmd+F to toggle search panel
     - Escape to close search
   - Search button in header toolbar
+- **Phase 6: Date Navigation**
+  - DateJumper floating action button for navigating to specific dates
+    - Fixed position FAB in bottom-right corner
+    - Calendar icon with hover effect
+  - DatePickerModal with full calendar interface
+    - Month/year dropdown selectors for fast navigation
+    - Calendar grid showing available days
+    - Days outside message date range are disabled
+    - Quick buttons: "Oldest" and "Newest" for jumping to ends
+    - Date range info showing conversation span
+    - "Go to Date" button to confirm selection
+  - Scroll-to-date functionality
+    - Smooth scrolling to first message on selected date
+    - Brief highlight animation (2s fade) on jumped-to message
+    - Uses virtualizer.scrollToIndex for efficient navigation
+  - Date range display in conversation header
+    - Shows message date span (e.g., "Jan 2023 - Dec 2024")
+    - Displays alongside message count
 
 ### Changed
 - **MAJOR:** Upgraded React from v18 to v19 (latest major version with improved performance)

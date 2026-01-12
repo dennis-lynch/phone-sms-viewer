@@ -7,17 +7,20 @@
  * - Auto-scroll to bottom on load
  * - Load more button for older messages
  * - Dynamic height measurement for variable-length messages
+ * - Date jumper for navigating to specific dates
  */
 
-import React, { useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../../store/appStore';
 import { MessageBubble, DateSeparator, MessageBubbleSkeleton } from './MessageBubble';
+import { DateJumper } from './DateJumper';
 import type { Message } from '../../../shared/types';
 
 const OVERSCAN = 20; // Number of items to render outside visible area
 const ESTIMATED_MESSAGE_HEIGHT = 80; // Estimated height for messages
 const DATE_SEPARATOR_HEIGHT = 48; // Fixed height for date separators
+const HIGHLIGHT_DURATION = 2000; // Duration of highlight animation in ms
 
 /**
  * Represents an item in the virtualized list (either a message or date separator)
@@ -71,6 +74,21 @@ function formatPhone(phone: string): string {
   return phone;
 }
 
+/**
+ * Format date range for display
+ */
+function formatDateRange(minDate: number, maxDate: number): string {
+  const min = new Date(minDate);
+  const max = new Date(maxDate);
+  const minStr = min.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  const maxStr = max.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+
+  if (minStr === maxStr) {
+    return minStr;
+  }
+  return `${minStr} - ${maxStr}`;
+}
+
 export function MessageThread() {
   const {
     selectedConversationId,
@@ -85,11 +103,27 @@ export function MessageThread() {
   const parentRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
   const prevMessageCount = useRef(0);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
 
   // Get current conversation
   const conversation = useMemo(() => {
     return conversations.find((c) => c.id === selectedConversationId);
   }, [conversations, selectedConversationId]);
+
+  // Calculate date range from messages
+  const dateRange = useMemo(() => {
+    if (messages.length === 0) return null;
+
+    let min = messages[0].timestamp;
+    let max = messages[0].timestamp;
+
+    for (const msg of messages) {
+      if (msg.timestamp < min) min = msg.timestamp;
+      if (msg.timestamp > max) max = msg.timestamp;
+    }
+
+    return { min, max };
+  }, [messages]);
 
   // Create flat list of virtual items
   const virtualItems = useMemo(() => {
@@ -110,6 +144,37 @@ export function MessageThread() {
     estimateSize,
     overscan: OVERSCAN,
   });
+
+  // Find the first message on or after a given timestamp
+  const findMessageIndexForDate = useCallback((timestamp: number): number => {
+    // Find the first message on or after this date
+    for (let i = 0; i < virtualItems.length; i++) {
+      const item = virtualItems[i];
+      if (item.type === 'message' && item.message.timestamp >= timestamp) {
+        return i;
+      }
+    }
+    // If no message found after this date, return the last item
+    return virtualItems.length - 1;
+  }, [virtualItems]);
+
+  // Handle date jump
+  const handleDateJump = useCallback((timestamp: number) => {
+    const index = findMessageIndexForDate(timestamp);
+    if (index >= 0) {
+      virtualizer.scrollToIndex(index, { align: 'start', behavior: 'smooth' });
+
+      // Highlight the message
+      const item = virtualItems[index];
+      if (item?.type === 'message' && item.message.id) {
+        setHighlightedMessageId(item.message.id);
+        // Clear highlight after duration
+        setTimeout(() => {
+          setHighlightedMessageId(null);
+        }, HIGHLIGHT_DURATION);
+      }
+    }
+  }, [findMessageIndexForDate, virtualizer, virtualItems]);
 
   // Scroll to bottom on initial load or when new messages arrive at the end
   useEffect(() => {
@@ -134,6 +199,7 @@ export function MessageThread() {
   useEffect(() => {
     isInitialLoad.current = true;
     prevMessageCount.current = 0;
+    setHighlightedMessageId(null);
   }, [selectedConversationId]);
 
   // No conversation selected
@@ -162,7 +228,7 @@ export function MessageThread() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-900">
+    <div className="h-full flex flex-col bg-gray-900 relative">
       {/* Header */}
       <div className="flex-none h-14 bg-gray-800 border-b border-gray-700 flex items-center px-4">
         {conversation ? (
@@ -183,11 +249,18 @@ export function MessageThread() {
 
         <div className="flex-1" />
 
-        {/* Message count */}
+        {/* Date range and message count */}
         {conversation && (
-          <span className="text-sm text-gray-500">
-            {conversation.messageCount.toLocaleString()} messages
-          </span>
+          <div className="text-right">
+            <span className="text-sm text-gray-500">
+              {conversation.messageCount.toLocaleString()} messages
+            </span>
+            {dateRange && (
+              <p className="text-xs text-gray-600">
+                {formatDateRange(dateRange.min, dateRange.max)}
+              </p>
+            )}
+          </div>
         )}
       </div>
 
@@ -244,6 +317,8 @@ export function MessageThread() {
 
             {virtualizer.getVirtualItems().map((virtualRow) => {
               const item = virtualItems[virtualRow.index];
+              const isHighlighted = item.type === 'message' && item.message.id === highlightedMessageId;
+
               return (
                 <div
                   key={item.key}
@@ -256,7 +331,9 @@ export function MessageThread() {
                     width: '100%',
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
-                  className="px-4"
+                  className={`px-4 transition-colors duration-500 ${
+                    isHighlighted ? 'bg-blue-500/20' : ''
+                  }`}
                 >
                   {item.type === 'date-separator' ? (
                     <DateSeparator date={item.date} />
@@ -271,6 +348,15 @@ export function MessageThread() {
           </div>
         )}
       </div>
+
+      {/* Date Jumper FAB */}
+      {dateRange && messages.length > 0 && (
+        <DateJumper
+          minDate={dateRange.min}
+          maxDate={dateRange.max}
+          onDateSelect={handleDateJump}
+        />
+      )}
     </div>
   );
 }
