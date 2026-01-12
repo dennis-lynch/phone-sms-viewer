@@ -3,6 +3,7 @@
  *
  * Displays virtualized messages for the selected conversation with:
  * - Header with contact name and phone number
+ * - Tabs for switching between Messages and Calls
  * - Virtualized scrollable message list with date separators
  * - Auto-scroll to bottom on load
  * - Load more button for older messages
@@ -15,7 +16,10 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../../store/appStore';
 import { MessageBubble, DateSeparator, MessageBubbleSkeleton } from './MessageBubble';
 import { DateJumper } from './DateJumper';
-import type { Message } from '../../../shared/types';
+import { CallList } from '../calls';
+import type { Message, Call } from '../../../shared/types';
+
+type ConversationTab = 'messages' | 'calls';
 
 const OVERSCAN = 20; // Number of items to render outside visible area
 const ESTIMATED_MESSAGE_HEIGHT = 80; // Estimated height for messages
@@ -104,6 +108,7 @@ export function MessageThread() {
   const isInitialLoad = useRef(true);
   const prevMessageCount = useRef(0);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<ConversationTab>('messages');
 
   // Get current conversation
   const conversation = useMemo(() => {
@@ -200,6 +205,7 @@ export function MessageThread() {
     isInitialLoad.current = true;
     prevMessageCount.current = 0;
     setHighlightedMessageId(null);
+    setActiveTab('messages');
   }, [selectedConversationId]);
 
   // No conversation selected
@@ -230,132 +236,177 @@ export function MessageThread() {
   return (
     <div className="h-full flex flex-col bg-gray-900 relative">
       {/* Header */}
-      <div className="flex-none h-14 bg-gray-800 border-b border-gray-700 flex items-center px-4">
-        {conversation ? (
-          <div>
-            <h2 className="font-medium text-white">
-              {conversation.contactName || 'Unknown'}
-            </h2>
-            <p className="text-xs text-gray-400">
-              {formatPhone(conversation.phoneNumber)}
-            </p>
-          </div>
-        ) : (
-          <div className="animate-pulse">
-            <div className="h-4 bg-gray-700 rounded w-32 mb-1" />
-            <div className="h-3 bg-gray-700 rounded w-24" />
-          </div>
-        )}
-
-        <div className="flex-1" />
-
-        {/* Date range and message count */}
-        {conversation && (
-          <div className="text-right">
-            <span className="text-sm text-gray-500">
-              {conversation.messageCount.toLocaleString()} messages
-            </span>
-            {dateRange && (
-              <p className="text-xs text-gray-600">
-                {formatDateRange(dateRange.min, dateRange.max)}
+      <div className="flex-none bg-gray-800 border-b border-gray-700">
+        <div className="h-14 flex items-center px-4">
+          {conversation ? (
+            <div>
+              <h2 className="font-medium text-white">
+                {conversation.contactName || 'Unknown'}
+              </h2>
+              <p className="text-xs text-gray-400">
+                {formatPhone(conversation.phoneNumber)}
               </p>
+            </div>
+          ) : (
+            <div className="animate-pulse">
+              <div className="h-4 bg-gray-700 rounded w-32 mb-1" />
+              <div className="h-3 bg-gray-700 rounded w-24" />
+            </div>
+          )}
+
+          <div className="flex-1" />
+
+          {/* Date range and message count */}
+          {conversation && (
+            <div className="text-right">
+              <span className="text-sm text-gray-500">
+                {conversation.messageCount.toLocaleString()} messages
+                {conversation.callCount > 0 && ` | ${conversation.callCount.toLocaleString()} calls`}
+              </span>
+              {dateRange && activeTab === 'messages' && (
+                <p className="text-xs text-gray-600">
+                  {formatDateRange(dateRange.min, dateRange.max)}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex px-4 gap-1">
+          <button
+            onClick={() => setActiveTab('messages')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'messages'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-gray-400 hover:text-gray-300'
+            }`}
+          >
+            Messages
+            {conversation && (
+              <span className="ml-1.5 text-xs opacity-75">
+                ({conversation.messageCount.toLocaleString()})
+              </span>
             )}
-          </div>
-        )}
+          </button>
+          <button
+            onClick={() => setActiveTab('calls')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'calls'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-gray-400 hover:text-gray-300'
+            }`}
+          >
+            Calls
+            {conversation && conversation.callCount > 0 && (
+              <span className="ml-1.5 text-xs opacity-75">
+                ({conversation.callCount.toLocaleString()})
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto" ref={parentRef}>
-        {/* Loading state */}
-        {messagesLoading && messages.length === 0 && (
-          <div className="p-4 space-y-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <MessageBubbleSkeleton key={i} isSent={i % 2 === 1} />
-            ))}
-          </div>
-        )}
-
-        {/* Error state */}
-        {messagesError && (
-          <div className="flex flex-col items-center justify-center h-full text-red-400">
-            <p>Failed to load messages</p>
-            <p className="text-sm text-gray-500 mt-1">{messagesError}</p>
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!messagesLoading && !messagesError && messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <p>No messages in this conversation</p>
-          </div>
-        )}
-
-        {/* Virtualized messages */}
-        {virtualItems.length > 0 && (
-          <div
-            style={{
-              height: `${virtualizer.getTotalSize()}px`,
-              width: '100%',
-              position: 'relative',
-            }}
-          >
-            {/* Load more button - positioned at top */}
-            {hasMoreMessages && (
-              <div
-                className="absolute top-0 left-0 right-0 flex justify-center py-4 z-10"
-                style={{ background: 'linear-gradient(to bottom, rgb(17 24 39), transparent)' }}
-              >
-                <button
-                  onClick={loadMoreMessages}
-                  disabled={messagesLoading}
-                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-md text-sm text-gray-300 transition-colors"
-                >
-                  {messagesLoading ? 'Loading...' : 'Load earlier messages'}
-                </button>
+      {/* Content based on active tab */}
+      {activeTab === 'messages' ? (
+        <>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto" ref={parentRef}>
+            {/* Loading state */}
+            {messagesLoading && messages.length === 0 && (
+              <div className="p-4 space-y-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <MessageBubbleSkeleton key={i} isSent={i % 2 === 1} />
+                ))}
               </div>
             )}
 
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const item = virtualItems[virtualRow.index];
-              const isHighlighted = item.type === 'message' && item.message.id === highlightedMessageId;
+            {/* Error state */}
+            {messagesError && (
+              <div className="flex flex-col items-center justify-center h-full text-red-400">
+                <p>Failed to load messages</p>
+                <p className="text-sm text-gray-500 mt-1">{messagesError}</p>
+              </div>
+            )}
 
-              return (
-                <div
-                  key={item.key}
-                  data-index={virtualRow.index}
-                  ref={virtualizer.measureElement}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                  className={`px-4 transition-colors duration-500 ${
-                    isHighlighted ? 'bg-blue-500/20' : ''
-                  }`}
-                >
-                  {item.type === 'date-separator' ? (
-                    <DateSeparator date={item.date} />
-                  ) : (
-                    <div className="py-1">
-                      <MessageBubble message={item.message} />
+            {/* Empty state */}
+            {!messagesLoading && !messagesError && messages.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                <p>No messages in this conversation</p>
+              </div>
+            )}
+
+            {/* Virtualized messages */}
+            {virtualItems.length > 0 && (
+              <div
+                style={{
+                  height: `${virtualizer.getTotalSize()}px`,
+                  width: '100%',
+                  position: 'relative',
+                }}
+              >
+                {/* Load more button - positioned at top */}
+                {hasMoreMessages && (
+                  <div
+                    className="absolute top-0 left-0 right-0 flex justify-center py-4 z-10"
+                    style={{ background: 'linear-gradient(to bottom, rgb(17 24 39), transparent)' }}
+                  >
+                    <button
+                      onClick={loadMoreMessages}
+                      disabled={messagesLoading}
+                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-md text-sm text-gray-300 transition-colors"
+                    >
+                      {messagesLoading ? 'Loading...' : 'Load earlier messages'}
+                    </button>
+                  </div>
+                )}
+
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const item = virtualItems[virtualRow.index];
+                  const isHighlighted = item.type === 'message' && item.message.id === highlightedMessageId;
+
+                  return (
+                    <div
+                      key={item.key}
+                      data-index={virtualRow.index}
+                      ref={virtualizer.measureElement}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      className={`px-4 transition-colors duration-500 ${
+                        isHighlighted ? 'bg-blue-500/20' : ''
+                      }`}
+                    >
+                      {item.type === 'date-separator' ? (
+                        <DateSeparator date={item.date} />
+                      ) : (
+                        <div className="py-1">
+                          <MessageBubble message={item.message} />
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Date Jumper FAB */}
-      {dateRange && messages.length > 0 && (
-        <DateJumper
-          minDate={dateRange.min}
-          maxDate={dateRange.max}
-          onDateSelect={handleDateJump}
-        />
+          {/* Date Jumper FAB */}
+          {dateRange && messages.length > 0 && (
+            <DateJumper
+              minDate={dateRange.min}
+              maxDate={dateRange.max}
+              onDateSelect={handleDateJump}
+            />
+          )}
+        </>
+      ) : (
+        /* Calls tab */
+        <CallList conversationId={selectedConversationId!} />
       )}
     </div>
   );

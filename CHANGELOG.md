@@ -102,6 +102,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Date range display in conversation header
     - Shows message date span (e.g., "Jan 2023 - Dec 2024")
     - Displays alongside message count
+- **Phase 7: Call Logs**
+  - CallItem component with call type icons (incoming, outgoing, missed, rejected)
+    - Color-coded icons: green (incoming), blue (outgoing), red (missed), orange (rejected)
+    - Duration formatting (e.g., "1h 23m 45s")
+    - Relative timestamp display (e.g., "2h ago")
+  - CallList component with virtualized scrolling
+    - Filter buttons by call type (All, Incoming, Outgoing, Missed, Rejected)
+    - Call count badges on filter buttons
+    - Load more pagination support
+  - Conversation view tabs to switch between Messages and Calls
+    - Tab bar in conversation header
+    - Message and call counts displayed on tabs
+    - Automatic tab reset when switching conversations
+- **Phase 8: Export & Copy**
+  - useSelection hook for message selection
+    - Single click selection
+    - Shift+click for range selection
+    - Ctrl/Cmd+click for multi-selection
+    - Select all and clear selection functions
+  - Context menu component for messages
+    - Copy, select, export menu options
+    - Position adjustment for viewport boundaries
+    - Keyboard escape to close
+  - Clipboard utility functions
+    - Copy single or multiple messages
+    - Format options: timestamps, contact names, direction
+    - Copy body only option
+  - ExportDialog component with format selection
+    - Formats: Plain Text, CSV, JSON, HTML
+    - Scope: Selected messages, entire conversation, search results
+    - Options: Include timestamps, include contact names
+    - Export summary preview
+  - Export IPC handlers in main process
+    - Plain text export with timestamps and contact names
+    - CSV export with proper escaping
+    - JSON export with ISO timestamps
+    - HTML export with styled message bubbles
+    - Save dialog integration
 
 ### Changed
 - **MAJOR:** Upgraded React from v18 to v19 (latest major version with improved performance)

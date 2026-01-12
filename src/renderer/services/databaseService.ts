@@ -13,6 +13,7 @@ import type {
   SearchResult,
   DatabaseStats,
   ImportMetadata,
+  ExportOptions,
 } from '../../shared/types';
 
 /**
@@ -237,4 +238,19 @@ export function formatDuration(seconds: number): string {
   if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
 
   return parts.join(' ');
+}
+
+// ============================================================================
+// Export Operations
+// ============================================================================
+
+/**
+ * Exports messages to a file
+ */
+export async function exportMessages(
+  messages: Message[],
+  options: ExportOptions,
+  title?: string
+): Promise<{ success: boolean; filePath?: string; error?: string }> {
+  return window.electronAPI.exportMessages(messages, options, title);
 }

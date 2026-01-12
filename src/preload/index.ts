@@ -17,6 +17,7 @@ import type {
   BackupFileInfo,
   DatabaseStats,
   ImportMetadata,
+  ExportOptions,
 } from '../shared/types';
 
 // Helper type for IPC responses
@@ -210,6 +211,19 @@ const api = {
   /** Optimizes the database (runs ANALYZE) */
   optimizeDatabase: (): Promise<{ success: boolean; error?: string }> => {
     return ipcRenderer.invoke('optimize-database');
+  },
+
+  // ============================================================================
+  // Export Operations
+  // ============================================================================
+
+  /** Exports messages to a file */
+  exportMessages: (
+    messages: Message[],
+    options: ExportOptions,
+    title?: string
+  ): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+    return ipcRenderer.invoke('export-messages', messages, options, title);
   },
 };
 

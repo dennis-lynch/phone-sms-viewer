@@ -6,3 +6,4 @@
 
 export { registerFileHandlers, cleanupFileHandlers } from './file-handlers';
 export { registerDatabaseHandlers } from './database-handlers';
+export { registerExportHandlers, unregisterExportHandlers } from './export-handlers';

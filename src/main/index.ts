@@ -7,7 +7,7 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import { initializeDatabase, closeDatabase } from './database/database';
-import { registerFileHandlers, cleanupFileHandlers, registerDatabaseHandlers } from './ipc';
+import { registerFileHandlers, cleanupFileHandlers, registerDatabaseHandlers, registerExportHandlers, unregisterExportHandlers } from './ipc';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -60,6 +60,9 @@ app.whenReady().then(() => {
   // Register database IPC handlers (don't need window reference)
   registerDatabaseHandlers();
 
+  // Register export handlers
+  registerExportHandlers();
+
   // Create main window
   createWindow();
 
@@ -86,4 +89,5 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   closeDatabase();
   cleanupFileHandlers();
+  unregisterExportHandlers();
 });
