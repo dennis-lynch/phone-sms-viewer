@@ -8,6 +8,9 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from './store/appStore';
 import { ImportProgressModal } from './components/import/ImportProgressModal';
+import { AppLayout, Header, StatusBar } from './components/layout/AppLayout';
+import { ConversationList } from './components/conversations/ConversationList';
+import { MessageThread } from './components/messages/MessageThread';
 import * as fileService from './services/fileService';
 
 export function App() {
@@ -19,7 +22,6 @@ export function App() {
     loadStats,
     startImport,
     startMultiImport,
-    setShowImportModal,
   } = useAppStore();
 
   // Load initial data
@@ -56,83 +58,81 @@ export function App() {
     }
   };
 
-  return (
-    <div className="h-screen flex flex-col bg-gray-900 text-white">
-      {/* Header / Toolbar */}
-      <header className="flex-none h-14 bg-gray-800 border-b border-gray-700 flex items-center px-4 gap-4">
-        <h1 className="text-lg font-semibold text-white">Phone SMS Viewer</h1>
+  // Show empty state if no conversations loaded
+  const showEmptyState = !conversationsLoading && conversations.length === 0;
 
-        <div className="flex-1" />
+  // Header with toolbar buttons
+  const headerContent = (
+    <Header
+      title="Phone SMS Viewer"
+      actions={
+        <>
+          <button
+            onClick={handleOpenFile}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors"
+          >
+            Open File
+          </button>
+          <button
+            onClick={handleOpenFiles}
+            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-md transition-colors"
+          >
+            Open Files
+          </button>
+          <button
+            onClick={handleOpenDirectory}
+            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-md transition-colors"
+          >
+            Open Folder
+          </button>
+        </>
+      }
+    />
+  );
 
-        {/* File actions */}
-        <button
-          onClick={handleOpenFile}
-          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors"
-        >
-          Open File
-        </button>
-        <button
-          onClick={handleOpenFiles}
-          className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-md transition-colors"
-        >
-          Open Files
-        </button>
-        <button
-          onClick={handleOpenDirectory}
-          className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-md transition-colors"
-        >
-          Open Folder
-        </button>
-      </header>
+  // Status bar content
+  const statusBarContent = (
+    <StatusBar>
+      {stats ? (
+        <>
+          <span>{stats.totalConversations} conversations</span>
+          <span className="mx-2">|</span>
+          <span>{stats.totalMessages.toLocaleString()} messages</span>
+          <span className="mx-2">|</span>
+          <span>{stats.totalCalls.toLocaleString()} calls</span>
+        </>
+      ) : (
+        <span>Ready</span>
+      )}
+    </StatusBar>
+  );
 
-      {/* Main content */}
-      <main className="flex-1 flex overflow-hidden">
-        {/* Show empty state if no conversations */}
-        {!conversationsLoading && conversations.length === 0 ? (
-          <EmptyState onOpenFile={handleOpenFile} />
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
-            {conversationsLoading ? (
-              <div className="flex items-center gap-3">
-                <LoadingSpinner />
-                <span>Loading conversations...</span>
-              </div>
-            ) : (
-              <div className="text-center">
-                <p className="text-lg mb-2">
-                  {conversations.length} conversation{conversations.length !== 1 ? 's' : ''} loaded
-                </p>
-                {stats && (
-                  <p className="text-sm text-gray-600">
-                    {stats.totalMessages.toLocaleString()} messages,{' '}
-                    {stats.totalCalls.toLocaleString()} calls
-                  </p>
-                )}
-                <p className="text-sm text-gray-600 mt-4">
-                  UI coming in Phase 3...
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
-
-      {/* Status bar */}
-      <footer className="flex-none h-6 bg-gray-800 border-t border-gray-700 flex items-center px-4 text-xs text-gray-500">
-        {stats && (
-          <>
-            <span>{stats.totalConversations} conversations</span>
-            <span className="mx-2">|</span>
-            <span>{stats.totalMessages.toLocaleString()} messages</span>
-            <span className="mx-2">|</span>
-            <span>{stats.totalCalls.toLocaleString()} calls</span>
-          </>
-        )}
-      </footer>
-
-      {/* Import modal */}
-      <ImportProgressModal />
+  // Sidebar content
+  const sidebarContent = showEmptyState ? (
+    <div className="h-full flex items-center justify-center text-gray-500 text-sm p-4 text-center">
+      Import a backup to see conversations
     </div>
+  ) : (
+    <ConversationList />
+  );
+
+  // Main content
+  const mainContent = showEmptyState ? (
+    <EmptyState onOpenFile={handleOpenFile} />
+  ) : (
+    <MessageThread />
+  );
+
+  return (
+    <>
+      <AppLayout
+        header={headerContent}
+        sidebar={sidebarContent}
+        content={mainContent}
+        statusBar={statusBarContent}
+      />
+      <ImportProgressModal />
+    </>
   );
 }
 

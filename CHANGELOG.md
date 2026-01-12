@@ -35,6 +35,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Multi-file import with progress tracking
   - Empty state UI when no backups are loaded
   - Basic app layout with header, footer, and status bar
+- **Phase 3: Basic UI & Conversation List**
+  - AppLayout component with resizable sidebar (drag to resize, 200-500px range)
+  - ConversationList component with real-time search filtering
+  - ConversationItem component with avatar, contact name, preview, timestamp, and message count badge
+  - MessageThread component with header showing contact info and message count
+  - MessageBubble component with sent/received styles (blue right-aligned vs gray left-aligned)
+  - DateSeparator component with "Today", "Yesterday", or full date display
+  - URL detection and linkification in message bodies
+  - Message grouping by date for organized display
+  - Auto-scroll to bottom on conversation load
+  - Load more button for older messages with pagination support
+  - Skeleton loaders for conversations and messages during loading states
 
 ### Changed
 - **MAJOR:** Upgraded React from v18 to v19 (latest major version with improved performance)
