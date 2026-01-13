@@ -278,8 +278,7 @@ export class SmsParser extends EventEmitter {
       // Handle errors
       parser.on('error', (error: Error) => {
         result.errors.push(`Parse error: ${error.message}`);
-        // Continue parsing despite errors
-        parser.resume();
+        // SAXStream doesn't have resume() - errors are non-fatal, parsing continues automatically
       });
 
       // Handle end of parsing
