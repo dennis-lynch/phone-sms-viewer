@@ -89,6 +89,7 @@ export function registerFileHandlers(mainWindow: BrowserWindow): void {
   // Import a single backup file
   ipcMain.handle('import-backup', async (event, filePath: string) => {
     activeImportAborted = false;
+    console.log('[import-backup] Starting import for:', filePath);
 
     const ext = path.extname(filePath).toLowerCase();
 
@@ -97,8 +98,10 @@ export function registerFileHandlers(mainWindow: BrowserWindow): void {
     let isTemp = false;
 
     if (ext === '.zip') {
+      console.log('[import-backup] Extracting ZIP file...');
       const extracted = extractToTemp(filePath);
       if (!extracted.success) {
+        console.error('[import-backup] ZIP extraction failed:', extracted.error);
         return {
           success: false,
           filePath,
@@ -112,11 +115,15 @@ export function registerFileHandlers(mainWindow: BrowserWindow): void {
       }
       actualPath = extracted.filePath;
       isTemp = true;
+      console.log('[import-backup] Extracted to:', actualPath);
     }
 
     // Determine file type by reading headers
+    console.log('[import-backup] Detecting file type...');
     const smsInfo = await getBackupInfo(actualPath);
     const callsInfo = await getCallsBackupInfo(actualPath);
+    console.log('[import-backup] SMS info:', smsInfo ? 'found' : 'not found');
+    console.log('[import-backup] Calls info:', callsInfo ? 'found' : 'not found');
 
     const onProgress = (progress: ImportProgress) => {
       if (!activeImportAborted) {
@@ -127,10 +134,15 @@ export function registerFileHandlers(mainWindow: BrowserWindow): void {
     let result;
     try {
       if (smsInfo) {
+        console.log('[import-backup] Parsing as SMS backup...');
         result = await parseSmsBackup(actualPath, onProgress);
+        console.log('[import-backup] SMS parse result:', result.success, 'messages:', result.messagesImported, 'errors:', result.errors.length);
       } else if (callsInfo) {
+        console.log('[import-backup] Parsing as calls backup...');
         result = await parseCallsBackup(actualPath, onProgress);
+        console.log('[import-backup] Calls parse result:', result.success, 'calls:', result.callsImported, 'errors:', result.errors.length);
       } else {
+        console.error('[import-backup] Unknown file format - neither SMS nor calls detected');
         result = {
           success: false,
           filePath,
@@ -143,6 +155,7 @@ export function registerFileHandlers(mainWindow: BrowserWindow): void {
         };
       }
     } catch (error) {
+      console.error('[import-backup] Import exception:', error);
       result = {
         success: false,
         filePath,

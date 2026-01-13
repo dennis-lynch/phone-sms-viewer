@@ -1,6 +1,6 @@
 {
   "name": "phone-sms-viewer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A viewer to browse and search backed-up phone SMS and call logs",
   "main": "dist/main.js",
   "author": "Your Name",

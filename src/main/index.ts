@@ -9,6 +9,11 @@ import * as path from 'path';
 import { initializeDatabase, closeDatabase } from './database/database';
 import { registerFileHandlers, cleanupFileHandlers, registerDatabaseHandlers, registerExportHandlers, unregisterExportHandlers } from './ipc';
 
+// Fix GPU cache errors on Windows by disabling the GPU disk cache
+// These errors are cosmetic but annoying: "Unable to move the cache: Access is denied"
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+app.commandLine.appendSwitch('disable-gpu-disk-cache');
+
 let mainWindow: BrowserWindow | null = null;
 
 /**
