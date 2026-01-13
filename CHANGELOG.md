@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-01-12
 
 ### Added
 - Initial project setup with Electron, TypeScript, and React
@@ -164,6 +164,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Ctrl/Cmd+,: Open settings
     - Escape: Close dialogs and search
   - Toolbar buttons for Settings, History, and About dialogs
+- Launch scripts for easy startup
+  - `run.bat` - Windows batch script
+  - `run.ps1` - Windows PowerShell script
+  - `run.sh` - Linux/macOS shell script
 
 ### Changed
 - **MAJOR:** Upgraded React from v18 to v19 (latest major version with improved performance)
@@ -186,15 +190,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Production build path incorrect**: Fixed renderer path from `'../renderer/index.html'` to `'renderer/index.html'` in main process
 - **Dev mode doesn't auto-start Electron**: Added wait-on and cross-env dependencies with dev:electron script to automatically launch Electron after Vite server is ready
 
-## [0.1.0] - TBD
-
-### Added
-- Initial release (planned)
-- XML parser for SMS Backup & Restore Pro format
-- SQLite database for message storage
-- Basic conversation list and message thread views
-- Advanced search with filters
-- Export functionality
-
-[Unreleased]: https://github.com/yourusername/phone-sms-viewer/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/yourusername/phone-sms-viewer/releases/tag/v0.1.0
+[1.0.0]: https://github.com/yourusername/phone-sms-viewer/releases/tag/v1.0.0

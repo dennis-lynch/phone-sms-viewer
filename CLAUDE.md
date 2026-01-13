@@ -97,7 +97,11 @@ For performance with 20k+ messages:
 - **MINOR** (0.x.0): New features, backwards compatible
 - **PATCH** (0.0.x): Bug fixes, backwards compatible
 
-Every prompt that generates changes should increase the semantic version number.
+**IMPORTANT: Every prompt that generates code changes MUST increment the version number in CHANGELOG.md.** Do not use "Unreleased" - always use a concrete version number. When making changes:
+1. Read the current version from CHANGELOG.md
+2. Increment appropriately (MAJOR/MINOR/PATCH) based on change type
+3. Add a new version section with today's date
+4. Document all changes under the new version
 
 Follow the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format:
 - Add entry under new version number.  Use semantic versioning to increase the number as appropriate (MAJOR, MINOR, PATCH)
