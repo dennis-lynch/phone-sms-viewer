@@ -101,10 +101,12 @@ export class CallsParser extends EventEmitter {
       const callBatch: Call[] = [];
       let lastProgressTime = Date.now();
 
-      // Create SAX parser (strict mode)
-      const parser = sax.createStream(true, {
+      // Create SAX parser (non-strict mode for better error tolerance)
+      // Strict mode stops parsing on errors, non-strict continues
+      const parser = sax.createStream(false, {
         trim: true,
         normalize: true,
+        lowercase: false,
       });
 
       const emitProgress = (phase: ImportProgress['phase']) => {
@@ -205,10 +207,10 @@ export class CallsParser extends EventEmitter {
         }
       });
 
-      // Handle errors
+      // Handle errors - in non-strict mode, parsing continues after errors
       parser.on('error', (error: Error) => {
+        console.error('[calls-parser] Parse error:', error.message);
         result.errors.push(`Parse error: ${error.message}`);
-        // SAXStream doesn't have resume() - errors are non-fatal, parsing continues automatically
       });
 
       // Handle end of parsing
