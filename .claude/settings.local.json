@@ -11,7 +11,12 @@
       "Bash(dir:*)",
       "Bash(npm run build:main:*)",
       "Bash(npm run build:preload:*)",
-      "Bash(npm run build)"
+      "Bash(npm run build)",
+      "Bash(timeout 15 npm start)",
+      "Bash(npx electron-rebuild)",
+      "Bash(timeout 20 npm start)",
+      "Bash(timeout 25 npm run dev:*)",
+      "Bash(timeout 30 npm run dev:*)"
     ]
   }
 }

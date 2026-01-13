@@ -30,12 +30,12 @@ cd phone-sms-viewer
 npm install
 ```
 
-This will install all required dependencies including:
-- Electron (desktop framework)
-- React (UI framework)
-- TypeScript (type safety)
-- SQLite (database)
-- And all other dependencies
+This will install all required dependencies and automatically rebuild native modules for Electron (via the `postinstall` script).
+
+**Note:** If you see errors about `better-sqlite3` native module version mismatch, run:
+```bash
+npm run rebuild
+```
 
 ### 3. Running Locally
 
@@ -102,11 +102,21 @@ Example backup files are located in the `examples/` directory:
 
 ## Development Commands
 
-- `npm run dev` - Run in development mode with hot reload
+- `npm run dev` - Run in development mode with hot reload (auto-starts Electron)
 - `npm run build` - Build for production
+- `npm run start` - Start the built application
 - `npm run package` - Create distributable packages
+- `npm run rebuild` - Rebuild native modules for Electron
+- `npm run clean` - Clean build output directories
 - `npm run lint` - Run ESLint to check code quality
 - `npm run type-check` - Run TypeScript type checking
+
+## Keyboard Shortcuts
+
+- `Ctrl+O` (Windows/Linux) or `Cmd+O` (Mac) - Open file dialog
+- `Ctrl+F` (Windows/Linux) or `Cmd+F` (Mac) - Toggle search panel
+- `Ctrl+,` (Windows/Linux) or `Cmd+,` (Mac) - Open settings
+- `Escape` - Close dialogs and search panel
 
 ## Troubleshooting
 

@@ -181,6 +181,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migrated Tailwind config to v4 CSS-first format with `@import "tailwindcss"`
 - Added .npmrc configuration for legacy peer deps compatibility
 
+### Fixed
+- **better-sqlite3 native module version mismatch**: Added @electron/rebuild dependency with postinstall script to automatically rebuild native modules for Electron's Node.js version
+- **Production build path incorrect**: Fixed renderer path from `'../renderer/index.html'` to `'renderer/index.html'` in main process
+- **Dev mode doesn't auto-start Electron**: Added wait-on and cross-env dependencies with dev:electron script to automatically launch Electron after Vite server is ready
+
 ## [0.1.0] - TBD
 
 ### Added
