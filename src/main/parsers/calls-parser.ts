@@ -284,27 +284,42 @@ export async function parseCallsBackup(
  */
 export function getCallsBackupInfo(filePath: string): Promise<CallsBackupInfo | null> {
   return new Promise((resolve) => {
-    const parser = sax.createStream(true, { trim: true });
-    let backupInfo: CallsBackupInfo | null = null;
+    console.log('[getCallsBackupInfo] Reading file:', filePath);
 
-    parser.on('opentag', (node: sax.Tag) => {
-      if (node.name === 'calls') {
-        backupInfo = {
-          count: parseInt(node.attributes.count as string, 10) || 0,
-          backupSet: (node.attributes.backup_set as string) || '',
-          backupDate: parseInt(node.attributes.backup_date as string, 10) || 0,
-        };
-        // We have what we need, stop parsing
-        parser.end();
-      }
-    });
+    // Read first 8KB synchronously for more reliable detection
+    const fd = fs.openSync(filePath, 'r');
+    const buffer = Buffer.alloc(8192);
+    const bytesRead = fs.readSync(fd, buffer, 0, 8192, 0);
+    fs.closeSync(fd);
 
-    parser.on('end', () => resolve(backupInfo));
-    parser.on('error', () => resolve(null));
+    const content = buffer.toString('utf8', 0, bytesRead);
+    console.log('[getCallsBackupInfo] Read', bytesRead, 'bytes, first 200 chars:', content.substring(0, 200));
 
-    // Only read first 4KB to get root element
-    const stream = fs.createReadStream(filePath, { encoding: 'utf8', end: 4096 });
-    stream.pipe(parser);
+    // Look for <calls root element
+    const callsMatch = content.match(/<calls\s+([^>]+)>/);
+    if (!callsMatch) {
+      console.log('[getCallsBackupInfo] No <calls> element found');
+      resolve(null);
+      return;
+    }
+
+    console.log('[getCallsBackupInfo] Found <calls> element:', callsMatch[0].substring(0, 100));
+
+    const attributes = callsMatch[1];
+
+    // Extract attributes
+    const countMatch = attributes.match(/count="(\d+)"/);
+    const backupSetMatch = attributes.match(/backup_set="([^"]+)"/);
+    const backupDateMatch = attributes.match(/backup_date="(\d+)"/);
+
+    const backupInfo: CallsBackupInfo = {
+      count: countMatch ? parseInt(countMatch[1], 10) : 0,
+      backupSet: backupSetMatch ? backupSetMatch[1] : '',
+      backupDate: backupDateMatch ? parseInt(backupDateMatch[1], 10) : 0,
+    };
+
+    console.log('[getCallsBackupInfo] Parsed backup info:', backupInfo);
+    resolve(backupInfo);
   });
 }
 

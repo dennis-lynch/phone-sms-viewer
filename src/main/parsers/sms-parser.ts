@@ -354,27 +354,43 @@ export async function parseSmsBackup(
  */
 export function getBackupInfo(filePath: string): Promise<BackupInfo | null> {
   return new Promise((resolve) => {
-    const parser = sax.createStream(true, { trim: true });
-    let backupInfo: BackupInfo | null = null;
+    console.log('[getBackupInfo] Reading file:', filePath);
 
-    parser.on('opentag', (node: sax.Tag) => {
-      if (node.name === 'smses') {
-        backupInfo = {
-          count: parseInt(node.attributes.count as string, 10) || 0,
-          backupSet: (node.attributes.backup_set as string) || '',
-          backupDate: parseInt(node.attributes.backup_date as string, 10) || 0,
-          type: (node.attributes.type as string) || 'full',
-        };
-        // We have what we need, stop parsing
-        parser.end();
-      }
-    });
+    // Read first 8KB synchronously for more reliable detection
+    const fd = fs.openSync(filePath, 'r');
+    const buffer = Buffer.alloc(8192);
+    const bytesRead = fs.readSync(fd, buffer, 0, 8192, 0);
+    fs.closeSync(fd);
 
-    parser.on('end', () => resolve(backupInfo));
-    parser.on('error', () => resolve(null));
+    const content = buffer.toString('utf8', 0, bytesRead);
+    console.log('[getBackupInfo] Read', bytesRead, 'bytes, first 200 chars:', content.substring(0, 200));
 
-    // Only read first 4KB to get root element
-    const stream = fs.createReadStream(filePath, { encoding: 'utf8', end: 4096 });
-    stream.pipe(parser);
+    // Look for <smses root element
+    const smsesMatch = content.match(/<smses\s+([^>]+)>/);
+    if (!smsesMatch) {
+      console.log('[getBackupInfo] No <smses> element found');
+      resolve(null);
+      return;
+    }
+
+    console.log('[getBackupInfo] Found <smses> element:', smsesMatch[0].substring(0, 100));
+
+    const attributes = smsesMatch[1];
+
+    // Extract attributes
+    const countMatch = attributes.match(/count="(\d+)"/);
+    const backupSetMatch = attributes.match(/backup_set="([^"]+)"/);
+    const backupDateMatch = attributes.match(/backup_date="(\d+)"/);
+    const typeMatch = attributes.match(/type="([^"]+)"/);
+
+    const backupInfo: BackupInfo = {
+      count: countMatch ? parseInt(countMatch[1], 10) : 0,
+      backupSet: backupSetMatch ? backupSetMatch[1] : '',
+      backupDate: backupDateMatch ? parseInt(backupDateMatch[1], 10) : 0,
+      type: typeMatch ? typeMatch[1] : 'full',
+    };
+
+    console.log('[getBackupInfo] Parsed backup info:', backupInfo);
+    resolve(backupInfo);
   });
 }

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **GPU cache errors on Windows**: Added Electron command-line switches to disable GPU disk cache, eliminating "Unable to move the cache: Access is denied" errors
+- **File type detection failing**: Rewrote `getBackupInfo` and `getCallsBackupInfo` functions to use synchronous file reading with regex matching instead of streaming SAX parser, which was failing silently on Windows
 - **Improved import diagnostics**: Added detailed console logging during file import to help diagnose import failures
 
 ## [1.0.0] - 2026-01-12
