@@ -1,12 +1,14 @@
 /**
- * SMS/MMS XML Streaming Parser
+ * SMS/MMS XML Parser
  *
- * Parses SMS Backup & Restore Pro XML files using streaming SAX parser.
- * Handles large files (47MB+) efficiently without loading entire file into memory.
+ * Parses SMS Backup & Restore Pro XML files using fast-xml-parser.
+ * Handles large files (47MB+) by loading into memory and parsing.
+ *
+ * Memory usage: ~3-4x file size (acceptable for desktop Electron app)
  */
 
 import * as fs from 'fs';
-import * as sax from 'sax';
+import { XMLParser } from 'fast-xml-parser';
 import { EventEmitter } from 'events';
 import { normalizePhoneNumber } from '../utils/phone-normalizer';
 import { processMessageBody } from '../utils/html-entities';
@@ -23,7 +25,7 @@ import type { Message, ImportProgress, ImportResult, ImportMetadata } from '../.
 // Batch size for database inserts
 const BATCH_SIZE = 1000;
 
-// Progress event interval
+// Progress event interval (ms)
 const PROGRESS_INTERVAL = 500;
 
 export interface SmsParserOptions {
@@ -38,8 +40,50 @@ export interface BackupInfo {
   type: string;
 }
 
+// Types for parsed XML structure
+interface ParsedSms {
+  address?: string;
+  date?: string;
+  type?: string;
+  body?: string;
+  contact_name?: string;
+  [key: string]: string | undefined;
+}
+
+interface ParsedMmsPart {
+  ct?: string;
+  text?: string;
+  [key: string]: string | undefined;
+}
+
+interface ParsedMmsAddr {
+  address?: string;
+  type?: string;
+  [key: string]: string | undefined;
+}
+
+interface ParsedMms {
+  address?: string;
+  date?: string;
+  type?: string;
+  msg_box?: string;
+  contact_name?: string;
+  parts?: { part?: ParsedMmsPart | ParsedMmsPart[] };
+  addrs?: { addr?: ParsedMmsAddr | ParsedMmsAddr[] };
+  [key: string]: unknown;
+}
+
+interface ParsedSmses {
+  count?: string;
+  backup_set?: string;
+  backup_date?: string;
+  type?: string;
+  sms?: ParsedSms | ParsedSms[];
+  mms?: ParsedMms | ParsedMms[];
+}
+
 /**
- * SMS Parser class - parses SMS/MMS backup XML files
+ * SMS Parser class - parses SMS/MMS backup XML files using fast-xml-parser
  */
 export class SmsParser extends EventEmitter {
   private filePath: string;
@@ -63,188 +107,140 @@ export class SmsParser extends EventEmitter {
    * Parses the XML file and imports messages into the database
    */
   async parse(): Promise<ImportResult> {
-    return new Promise((resolve, reject) => {
-      const result: ImportResult = {
-        success: false,
-        filePath: this.filePath,
-        totalParsed: 0,
-        messagesImported: 0,
-        callsImported: 0,
-        duplicatesSkipped: 0,
-        errors: [],
-        conversationsCreated: 0,
-      };
+    const result: ImportResult = {
+      success: false,
+      filePath: this.filePath,
+      totalParsed: 0,
+      messagesImported: 0,
+      callsImported: 0,
+      duplicatesSkipped: 0,
+      errors: [],
+      conversationsCreated: 0,
+    };
 
-      let backupInfo: BackupInfo | null = null;
-      const messageBatch: Message[] = [];
-      let lastProgressTime = Date.now();
+    const messageBatch: Message[] = [];
+    let lastProgressTime = Date.now();
+    let backupInfo: BackupInfo | null = null;
 
-      // Create SAX parser (non-strict mode for better error tolerance)
-      // Strict mode stops parsing on errors, non-strict continues
-      const parser = sax.createStream(false, {
-        trim: true,
-        normalize: true,
-        lowercase: false,
-      });
+    const emitProgress = (phase: ImportProgress['phase']) => {
+      const now = Date.now();
+      if (now - lastProgressTime >= PROGRESS_INTERVAL || phase === 'complete') {
+        lastProgressTime = now;
+        this.onProgress?.({
+          phase,
+          current: result.totalParsed,
+          total: backupInfo?.count || 0,
+          messagesImported: result.messagesImported,
+          duplicatesSkipped: result.duplicatesSkipped,
+          errors: result.errors.length,
+        });
+      }
+    };
 
-      const emitProgress = (phase: ImportProgress['phase']) => {
-        const now = Date.now();
-        if (now - lastProgressTime >= PROGRESS_INTERVAL || phase === 'complete') {
-          lastProgressTime = now;
-          this.onProgress?.({
-            phase,
-            current: result.totalParsed,
-            total: backupInfo?.count || 0,
-            messagesImported: result.messagesImported,
-            duplicatesSkipped: result.duplicatesSkipped,
-            errors: result.errors.length,
-          });
+    const flushBatch = () => {
+      if (messageBatch.length === 0) return;
+
+      try {
+        const inserted = withTransaction(() => insertMessagesBatch(messageBatch));
+        result.messagesImported += inserted;
+        result.duplicatesSkipped += messageBatch.length - inserted;
+      } catch (error) {
+        result.errors.push(`Batch insert failed: ${error}`);
+      }
+
+      messageBatch.length = 0;
+    };
+
+    const processSms = (sms: ParsedSms) => {
+      if (this.aborted) return;
+
+      try {
+        const address = sms.address || '';
+        const timestamp = parseInt(sms.date || '0', 10);
+        const type = parseInt(sms.type || '1', 10) as 1 | 2;
+        const body = sms.body || '';
+        const contactName = sms.contact_name || '';
+
+        const direction = type === 2 ? 'sent' : 'received';
+        const normalizedPhone = normalizePhoneNumber(address);
+        const processedBody = processMessageBody(body);
+        const bodyHash = hashMessageBody(processedBody);
+
+        const conversationId = getOrCreateConversation(normalizedPhone, address, contactName);
+
+        messageBatch.push({
+          conversationId,
+          type,
+          direction,
+          body: processedBody,
+          bodyHash,
+          timestamp,
+          originalPhone: address,
+          normalizedPhone,
+          contactName: contactName || '',
+        });
+
+        if (messageBatch.length >= BATCH_SIZE) {
+          flushBatch();
+          emitProgress('inserting');
         }
-      };
+      } catch (error) {
+        result.errors.push(`Failed to parse SMS: ${error}`);
+      }
+    };
 
-      const flushBatch = () => {
-        if (messageBatch.length === 0) return;
+    const processMms = (mms: ParsedMms) => {
+      if (this.aborted) return;
 
-        try {
-          const inserted = withTransaction(() => insertMessagesBatch(messageBatch));
-          result.messagesImported += inserted;
-          result.duplicatesSkipped += messageBatch.length - inserted;
-        } catch (error) {
-          result.errors.push(`Batch insert failed: ${error}`);
-        }
+      try {
+        const address = mms.address || '';
+        const timestamp = parseInt(mms.date || '0', 10);
+        const typeStr = mms.msg_box || mms.type || '1';
+        const type = (parseInt(typeStr, 10) === 2 ? 2 : 1) as 1 | 2;
+        const direction = type === 2 ? 'sent' : 'received';
+        let normalizedPhone = address ? normalizePhoneNumber(address) : '';
+        let originalPhone = address;
+        const contactName = mms.contact_name || '';
 
-        messageBatch.length = 0;
-      };
-
-      // Handle opening tags
-      parser.on('opentag', (node: sax.Tag) => {
-        if (this.aborted) {
-          parser.end();
-          return;
-        }
-
-        // Parse root element for backup info
-        if (node.name === 'smses') {
-          backupInfo = {
-            count: parseInt(node.attributes.count as string, 10) || 0,
-            backupSet: (node.attributes.backup_set as string) || '',
-            backupDate: parseInt(node.attributes.backup_date as string, 10) || 0,
-            type: (node.attributes.type as string) || 'full',
-          };
-          return;
-        }
-
-        // Parse SMS elements
-        if (node.name === 'sms') {
-          result.totalParsed++;
-
-          try {
-            const address = (node.attributes.address as string) || '';
-            const dateStr = (node.attributes.date as string) || '0';
-            const typeStr = (node.attributes.type as string) || '1';
-            const body = (node.attributes.body as string) || '';
-            const contactName = (node.attributes.contact_name as string) || '';
-
-            const timestamp = parseInt(dateStr, 10);
-            const type = parseInt(typeStr, 10) as 1 | 2;
-            const direction = type === 2 ? 'sent' : 'received';
-            const normalizedPhone = normalizePhoneNumber(address);
-            const processedBody = processMessageBody(body);
-            const bodyHash = hashMessageBody(processedBody);
-
-            // Get or create conversation
-            const conversationId = getOrCreateConversation(
-              normalizedPhone,
-              address,
-              contactName
-            );
-
-            const message: Message = {
-              conversationId,
-              type,
-              direction,
-              body: processedBody,
-              bodyHash,
-              timestamp,
-              originalPhone: address,
-              normalizedPhone,
-              contactName: contactName || '',
-            };
-
-            messageBatch.push(message);
-
-            // Flush batch when full
-            if (messageBatch.length >= BATCH_SIZE) {
-              flushBatch();
-              emitProgress('inserting');
+        // Extract address from <addr> elements if not in main attributes
+        if (!normalizedPhone && mms.addrs?.addr) {
+          const addrs = Array.isArray(mms.addrs.addr) ? mms.addrs.addr : [mms.addrs.addr];
+          for (const addr of addrs) {
+            const addrType = addr.type || '';
+            // type 137 = sender, 151 = recipient
+            if (addr.address && (addrType === '137' || addrType === '151')) {
+              originalPhone = addr.address;
+              normalizedPhone = normalizePhoneNumber(addr.address);
+              break;
             }
-          } catch (error) {
-            result.errors.push(`Failed to parse SMS: ${error}`);
           }
         }
 
-        // Parse MMS elements (simplified - just extract text parts)
-        if (node.name === 'mms') {
-          result.totalParsed++;
+        if (!normalizedPhone) return; // Skip MMS without valid address
 
-          try {
-            const address = (node.attributes.address as string) || '';
-            const dateStr = (node.attributes.date as string) || '0';
-            const typeStr = (node.attributes.msg_box as string) || (node.attributes.type as string) || '1';
-            const contactName = (node.attributes.contact_name as string) || '';
+        // Extract text from <part> elements
+        if (mms.parts?.part) {
+          const parts = Array.isArray(mms.parts.part) ? mms.parts.part : [mms.parts.part];
+          for (const part of parts) {
+            const ct = part.ct || '';
+            const text = part.text || '';
 
-            const timestamp = parseInt(dateStr, 10);
-            // MMS msg_box: 1=received, 2=sent
-            const type = (parseInt(typeStr, 10) === 2 ? 2 : 1) as 1 | 2;
-            const direction = type === 2 ? 'sent' : 'received';
-            const normalizedPhone = normalizePhoneNumber(address);
-
-            // For MMS, we'll collect the body from nested parts
-            // Store the MMS context for the part handler
-            (parser as unknown as { _currentMms: Partial<Message> })._currentMms = {
-              type,
-              direction,
-              timestamp,
-              originalPhone: address,
-              normalizedPhone,
-              contactName: contactName || '',
-            };
-          } catch (error) {
-            result.errors.push(`Failed to parse MMS header: ${error}`);
-          }
-        }
-
-        // Parse MMS parts for text content
-        if (node.name === 'part') {
-          const currentMms = (parser as unknown as { _currentMms?: Partial<Message> })._currentMms;
-          if (currentMms) {
-            const ct = (node.attributes.ct as string) || '';
-            const text = (node.attributes.text as string) || '';
-
-            // Only process text parts
             if (ct.includes('text') && text) {
               const processedBody = processMessageBody(text);
               const bodyHash = hashMessageBody(processedBody);
+              const conversationId = getOrCreateConversation(normalizedPhone, originalPhone, contactName);
 
-              const conversationId = getOrCreateConversation(
-                currentMms.normalizedPhone!,
-                currentMms.originalPhone!,
-                currentMms.contactName!
-              );
-
-              const message: Message = {
+              messageBatch.push({
                 conversationId,
-                type: currentMms.type!,
-                direction: currentMms.direction!,
+                type,
+                direction,
                 body: processedBody,
                 bodyHash,
-                timestamp: currentMms.timestamp!,
-                originalPhone: currentMms.originalPhone!,
-                normalizedPhone: currentMms.normalizedPhone!,
-                contactName: currentMms.contactName!,
-              };
-
-              messageBatch.push(message);
+                timestamp,
+                originalPhone,
+                normalizedPhone,
+                contactName: contactName || '',
+              });
 
               if (messageBatch.length >= BATCH_SIZE) {
                 flushBatch();
@@ -253,89 +249,120 @@ export class SmsParser extends EventEmitter {
             }
           }
         }
-
-        // Parse MMS addresses (for group messages, address might be in addrs)
-        if (node.name === 'addr') {
-          const currentMms = (parser as unknown as { _currentMms?: Partial<Message> })._currentMms;
-          if (currentMms && !currentMms.normalizedPhone) {
-            const address = (node.attributes.address as string) || '';
-            const addrType = (node.attributes.type as string) || '';
-            // type 137 = sender, 151 = recipient
-            if (address && (addrType === '137' || addrType === '151')) {
-              currentMms.originalPhone = address;
-              currentMms.normalizedPhone = normalizePhoneNumber(address);
-            }
-          }
-        }
-      });
-
-      // Handle closing tags
-      parser.on('closetag', (tagName: string) => {
-        if (tagName === 'mms') {
-          // Clear MMS context
-          delete (parser as unknown as { _currentMms?: Partial<Message> })._currentMms;
-        }
-      });
-
-      // Handle errors - in non-strict mode, parsing continues after errors
-      parser.on('error', (error: Error) => {
-        console.error('[sms-parser] Parse error:', error.message);
-        result.errors.push(`Parse error: ${error.message}`);
-      });
-
-      // Handle end of parsing
-      parser.on('end', () => {
-        // Flush remaining messages
-        flushBatch();
-
-        // Update conversation statistics
-        emitProgress('grouping');
-        try {
-          updateAllConversationStats();
-        } catch (error) {
-          result.errors.push(`Failed to update conversation stats: ${error}`);
-        }
-
-        // Record import metadata
-        if (backupInfo) {
-          try {
-            const metadata: ImportMetadata = {
-              filePath: this.filePath,
-              backupSet: backupInfo.backupSet,
-              backupDate: backupInfo.backupDate,
-              importDate: Date.now(),
-              messageCount: result.messagesImported,
-              callCount: 0,
-              type: 'sms',
-            };
-            recordImport(metadata);
-          } catch (error) {
-            result.errors.push(`Failed to record import metadata: ${error}`);
-          }
-        }
-
-        result.success = result.errors.length === 0;
-        emitProgress('complete');
-        resolve(result);
-      });
-
-      // Start parsing
-      try {
-        const fileStream = fs.createReadStream(this.filePath, { encoding: 'utf8' });
-
-        fileStream.on('error', (error) => {
-          result.errors.push(`File read error: ${error.message}`);
-          result.success = false;
-          reject(error);
-        });
-
-        fileStream.pipe(parser);
       } catch (error) {
-        result.errors.push(`Failed to open file: ${error}`);
-        result.success = false;
-        reject(error);
+        result.errors.push(`Failed to parse MMS: ${error}`);
       }
-    });
+    };
+
+    try {
+      console.log('[sms-parser] Reading file:', this.filePath);
+      emitProgress('parsing');
+
+      // Read entire file
+      const content = fs.readFileSync(this.filePath, 'utf8');
+      console.log('[sms-parser] File size:', (content.length / 1024 / 1024).toFixed(2), 'MB');
+
+      // Parse XML with fast-xml-parser
+      const parser = new XMLParser({
+        ignoreAttributes: false,
+        attributeNamePrefix: '',
+        textNodeName: '#text',
+        parseAttributeValue: false,
+        trimValues: true,
+      });
+
+      console.log('[sms-parser] Parsing XML...');
+      const data = parser.parse(content) as { smses?: ParsedSmses };
+
+      if (!data.smses) {
+        result.errors.push('Invalid SMS backup file - no <smses> root element found');
+        return result;
+      }
+
+      const smses = data.smses;
+
+      // Extract backup info
+      backupInfo = {
+        count: parseInt(smses.count || '0', 10),
+        backupSet: smses.backup_set || '',
+        backupDate: parseInt(smses.backup_date || '0', 10),
+        type: smses.type || 'full',
+      };
+      console.log('[sms-parser] Backup info:', backupInfo);
+
+      // Process SMS messages
+      if (smses.sms) {
+        const smsArray = Array.isArray(smses.sms) ? smses.sms : [smses.sms];
+        console.log('[sms-parser] Processing', smsArray.length, 'SMS messages...');
+
+        for (const sms of smsArray) {
+          if (this.aborted) break;
+          result.totalParsed++;
+          processSms(sms);
+
+          // Emit progress periodically
+          if (result.totalParsed % 1000 === 0) {
+            emitProgress('inserting');
+          }
+        }
+      }
+
+      // Process MMS messages
+      if (smses.mms) {
+        const mmsArray = Array.isArray(smses.mms) ? smses.mms : [smses.mms];
+        console.log('[sms-parser] Processing', mmsArray.length, 'MMS messages...');
+
+        for (const mms of mmsArray) {
+          if (this.aborted) break;
+          result.totalParsed++;
+          processMms(mms);
+
+          // Emit progress periodically
+          if (result.totalParsed % 100 === 0) {
+            emitProgress('inserting');
+          }
+        }
+      }
+
+      // Flush remaining messages
+      flushBatch();
+
+      // Update conversation statistics
+      emitProgress('grouping');
+      try {
+        updateAllConversationStats();
+      } catch (error) {
+        result.errors.push(`Failed to update conversation stats: ${error}`);
+      }
+
+      // Record import metadata
+      if (backupInfo) {
+        try {
+          const metadata: ImportMetadata = {
+            filePath: this.filePath,
+            backupSet: backupInfo.backupSet,
+            backupDate: backupInfo.backupDate,
+            importDate: Date.now(),
+            messageCount: result.messagesImported,
+            callCount: 0,
+            type: 'sms',
+          };
+          recordImport(metadata);
+        } catch (error) {
+          result.errors.push(`Failed to record import metadata: ${error}`);
+        }
+      }
+
+      result.success = result.errors.length === 0 || result.messagesImported > 0;
+      emitProgress('complete');
+      console.log('[sms-parser] Parse complete:', result.messagesImported, 'messages imported,', result.duplicatesSkipped, 'duplicates skipped');
+
+    } catch (error) {
+      console.error('[sms-parser] Parse error:', error);
+      result.errors.push(`Parse failed: ${error}`);
+    }
+
+    return result;
   }
 }
 

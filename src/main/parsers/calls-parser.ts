@@ -1,14 +1,14 @@
 /**
- * Calls XML Streaming Parser
+ * Call Log XML Parser
  *
- * Parses SMS Backup & Restore Pro call log XML files using streaming SAX parser.
+ * Parses SMS Backup & Restore Pro call log XML files using fast-xml-parser.
+ * Handles call history backup files efficiently.
  */
 
 import * as fs from 'fs';
-import * as sax from 'sax';
+import { XMLParser } from 'fast-xml-parser';
 import { EventEmitter } from 'events';
 import { normalizePhoneNumber } from '../utils/phone-normalizer';
-import { processMessageBody } from '../utils/html-entities';
 import {
   getOrCreateConversation,
   insertCallsBatch,
@@ -16,12 +16,12 @@ import {
   recordImport,
 } from '../database/queries';
 import { withTransaction } from '../database/database';
-import type { Call, ImportProgress, ImportResult, ImportMetadata, CallType, CallTypeLabel } from '../../shared/types';
+import type { Call, ImportProgress, ImportResult, ImportMetadata } from '../../shared/types';
 
 // Batch size for database inserts
 const BATCH_SIZE = 500;
 
-// Progress event interval
+// Progress event interval (ms)
 const PROGRESS_INTERVAL = 500;
 
 export interface CallsParserOptions {
@@ -35,10 +35,28 @@ export interface CallsBackupInfo {
   backupDate: number;
 }
 
+// Type for parsed call element
+interface ParsedCall {
+  number?: string;
+  duration?: string;
+  date?: string;
+  type?: string;
+  contact_name?: string;
+  [key: string]: string | undefined;
+}
+
+// Type for parsed calls root element
+interface ParsedCalls {
+  count?: string;
+  backup_set?: string;
+  backup_date?: string;
+  call?: ParsedCall | ParsedCall[];
+}
+
 /**
- * Maps call type codes to labels
+ * Maps call type number to label
  */
-function getCallTypeLabel(type: number): CallTypeLabel {
+function getCallTypeLabel(type: number): 'incoming' | 'outgoing' | 'missed' | 'rejected' {
   switch (type) {
     case 1:
       return 'incoming';
@@ -49,19 +67,12 @@ function getCallTypeLabel(type: number): CallTypeLabel {
     case 5:
       return 'rejected';
     default:
-      return 'incoming'; // Default to incoming for unknown types
+      return 'incoming';
   }
 }
 
 /**
- * Validates call type
- */
-function isValidCallType(type: number): type is CallType {
-  return type === 1 || type === 2 || type === 3 || type === 5;
-}
-
-/**
- * Calls Parser class - parses call log backup XML files
+ * Calls Parser class - parses call log backup XML files using fast-xml-parser
  */
 export class CallsParser extends EventEmitter {
   private filePath: string;
@@ -85,187 +96,177 @@ export class CallsParser extends EventEmitter {
    * Parses the XML file and imports calls into the database
    */
   async parse(): Promise<ImportResult> {
-    return new Promise((resolve, reject) => {
-      const result: ImportResult = {
-        success: false,
-        filePath: this.filePath,
-        totalParsed: 0,
-        messagesImported: 0,
-        callsImported: 0,
-        duplicatesSkipped: 0,
-        errors: [],
-        conversationsCreated: 0,
-      };
+    const result: ImportResult = {
+      success: false,
+      filePath: this.filePath,
+      totalParsed: 0,
+      messagesImported: 0,
+      callsImported: 0,
+      duplicatesSkipped: 0,
+      errors: [],
+      conversationsCreated: 0,
+    };
 
-      let backupInfo: CallsBackupInfo | null = null;
-      const callBatch: Call[] = [];
-      let lastProgressTime = Date.now();
+    const callBatch: Call[] = [];
+    let lastProgressTime = Date.now();
+    let backupInfo: CallsBackupInfo | null = null;
 
-      // Create SAX parser (non-strict mode for better error tolerance)
-      // Strict mode stops parsing on errors, non-strict continues
-      const parser = sax.createStream(false, {
-        trim: true,
-        normalize: true,
-        lowercase: false,
-      });
+    const emitProgress = (phase: ImportProgress['phase']) => {
+      const now = Date.now();
+      if (now - lastProgressTime >= PROGRESS_INTERVAL || phase === 'complete') {
+        lastProgressTime = now;
+        this.onProgress?.({
+          phase,
+          current: result.totalParsed,
+          total: backupInfo?.count || 0,
+          messagesImported: result.messagesImported,
+          duplicatesSkipped: result.duplicatesSkipped,
+          errors: result.errors.length,
+        });
+      }
+    };
 
-      const emitProgress = (phase: ImportProgress['phase']) => {
-        const now = Date.now();
-        if (now - lastProgressTime >= PROGRESS_INTERVAL || phase === 'complete') {
-          lastProgressTime = now;
-          this.onProgress?.({
-            phase,
-            current: result.totalParsed,
-            total: backupInfo?.count || 0,
-            messagesImported: result.callsImported, // Use callsImported for calls
-            duplicatesSkipped: result.duplicatesSkipped,
-            errors: result.errors.length,
-          });
-        }
-      };
+    const flushBatch = () => {
+      if (callBatch.length === 0) return;
 
-      const flushBatch = () => {
-        if (callBatch.length === 0) return;
-
-        try {
-          const inserted = withTransaction(() => insertCallsBatch(callBatch));
-          result.callsImported += inserted;
-          result.duplicatesSkipped += callBatch.length - inserted;
-        } catch (error) {
-          result.errors.push(`Batch insert failed: ${error}`);
-        }
-
-        callBatch.length = 0;
-      };
-
-      // Handle opening tags
-      parser.on('opentag', (node: sax.Tag) => {
-        if (this.aborted) {
-          parser.end();
-          return;
-        }
-
-        // Parse root element for backup info
-        if (node.name === 'calls') {
-          backupInfo = {
-            count: parseInt(node.attributes.count as string, 10) || 0,
-            backupSet: (node.attributes.backup_set as string) || '',
-            backupDate: parseInt(node.attributes.backup_date as string, 10) || 0,
-          };
-          return;
-        }
-
-        // Parse call elements
-        if (node.name === 'call') {
-          result.totalParsed++;
-
-          try {
-            const number = (node.attributes.number as string) || '';
-            const durationStr = (node.attributes.duration as string) || '0';
-            const dateStr = (node.attributes.date as string) || '0';
-            const typeStr = (node.attributes.type as string) || '1';
-            const contactName = processMessageBody((node.attributes.contact_name as string) || '');
-
-            const timestamp = parseInt(dateStr, 10);
-            const duration = parseInt(durationStr, 10);
-            const typeNum = parseInt(typeStr, 10);
-            const type: CallType = isValidCallType(typeNum) ? typeNum : 1;
-            const typeLabel = getCallTypeLabel(type);
-            const normalizedPhone = normalizePhoneNumber(number);
-
-            // Get or create conversation for linking
-            let conversationId: number | undefined;
-            if (normalizedPhone) {
-              conversationId = getOrCreateConversation(
-                normalizedPhone,
-                number,
-                contactName
-              );
-            }
-
-            const call: Call = {
-              conversationId,
-              phoneNumber: number,
-              normalizedPhone,
-              contactName: contactName || '',
-              timestamp,
-              duration,
-              type,
-              typeLabel,
-            };
-
-            callBatch.push(call);
-
-            // Flush batch when full
-            if (callBatch.length >= BATCH_SIZE) {
-              flushBatch();
-              emitProgress('inserting');
-            }
-          } catch (error) {
-            result.errors.push(`Failed to parse call: ${error}`);
-          }
-        }
-      });
-
-      // Handle errors - in non-strict mode, parsing continues after errors
-      parser.on('error', (error: Error) => {
-        console.error('[calls-parser] Parse error:', error.message);
-        result.errors.push(`Parse error: ${error.message}`);
-      });
-
-      // Handle end of parsing
-      parser.on('end', () => {
-        // Flush remaining calls
-        flushBatch();
-
-        // Update conversation statistics
-        emitProgress('grouping');
-        try {
-          updateAllConversationStats();
-        } catch (error) {
-          result.errors.push(`Failed to update conversation stats: ${error}`);
-        }
-
-        // Record import metadata
-        if (backupInfo) {
-          try {
-            const metadata: ImportMetadata = {
-              filePath: this.filePath,
-              backupSet: backupInfo.backupSet,
-              backupDate: backupInfo.backupDate,
-              importDate: Date.now(),
-              messageCount: 0,
-              callCount: result.callsImported,
-              type: 'calls',
-            };
-            recordImport(metadata);
-          } catch (error) {
-            result.errors.push(`Failed to record import metadata: ${error}`);
-          }
-        }
-
-        result.success = result.errors.length === 0;
-        emitProgress('complete');
-        resolve(result);
-      });
-
-      // Start parsing
       try {
-        const fileStream = fs.createReadStream(this.filePath, { encoding: 'utf8' });
+        const inserted = withTransaction(() => insertCallsBatch(callBatch));
+        result.callsImported += inserted;
+        result.duplicatesSkipped += callBatch.length - inserted;
+      } catch (error) {
+        result.errors.push(`Batch insert failed: ${error}`);
+      }
 
-        fileStream.on('error', (error) => {
-          result.errors.push(`File read error: ${error.message}`);
-          result.success = false;
-          reject(error);
+      callBatch.length = 0;
+    };
+
+    const processCall = (call: ParsedCall) => {
+      if (this.aborted) return;
+
+      try {
+        const phoneNumber = call.number || '';
+        const duration = parseInt(call.duration || '0', 10);
+        const timestamp = parseInt(call.date || '0', 10);
+        const type = parseInt(call.type || '1', 10) as 1 | 2 | 3 | 5;
+        const contactName = call.contact_name || '';
+
+        const normalizedPhone = normalizePhoneNumber(phoneNumber);
+        const typeLabel = getCallTypeLabel(type);
+
+        // Get or create conversation for this phone number
+        const conversationId = getOrCreateConversation(normalizedPhone, phoneNumber, contactName);
+
+        callBatch.push({
+          conversationId,
+          phoneNumber,
+          normalizedPhone,
+          contactName: contactName || '',
+          timestamp,
+          duration,
+          type,
+          typeLabel,
         });
 
-        fileStream.pipe(parser);
+        if (callBatch.length >= BATCH_SIZE) {
+          flushBatch();
+          emitProgress('inserting');
+        }
       } catch (error) {
-        result.errors.push(`Failed to open file: ${error}`);
-        result.success = false;
-        reject(error);
+        result.errors.push(`Failed to parse call: ${error}`);
       }
-    });
+    };
+
+    try {
+      console.log('[calls-parser] Reading file:', this.filePath);
+      emitProgress('parsing');
+
+      // Read entire file
+      const content = fs.readFileSync(this.filePath, 'utf8');
+      console.log('[calls-parser] File size:', (content.length / 1024).toFixed(2), 'KB');
+
+      // Parse XML with fast-xml-parser
+      const parser = new XMLParser({
+        ignoreAttributes: false,
+        attributeNamePrefix: '',
+        textNodeName: '#text',
+        parseAttributeValue: false,
+        trimValues: true,
+      });
+
+      console.log('[calls-parser] Parsing XML...');
+      const data = parser.parse(content) as { calls?: ParsedCalls };
+
+      if (!data.calls) {
+        result.errors.push('Invalid calls backup file - no <calls> root element found');
+        return result;
+      }
+
+      const calls = data.calls;
+
+      // Extract backup info
+      backupInfo = {
+        count: parseInt(calls.count || '0', 10),
+        backupSet: calls.backup_set || '',
+        backupDate: parseInt(calls.backup_date || '0', 10),
+      };
+      console.log('[calls-parser] Backup info:', backupInfo);
+
+      // Process call entries
+      if (calls.call) {
+        const callArray = Array.isArray(calls.call) ? calls.call : [calls.call];
+        console.log('[calls-parser] Processing', callArray.length, 'calls...');
+
+        for (const call of callArray) {
+          if (this.aborted) break;
+          result.totalParsed++;
+          processCall(call);
+
+          // Emit progress periodically
+          if (result.totalParsed % 500 === 0) {
+            emitProgress('inserting');
+          }
+        }
+      }
+
+      // Flush remaining calls
+      flushBatch();
+
+      // Update conversation statistics
+      emitProgress('grouping');
+      try {
+        updateAllConversationStats();
+      } catch (error) {
+        result.errors.push(`Failed to update conversation stats: ${error}`);
+      }
+
+      // Record import metadata
+      if (backupInfo) {
+        try {
+          const metadata: ImportMetadata = {
+            filePath: this.filePath,
+            backupSet: backupInfo.backupSet,
+            backupDate: backupInfo.backupDate,
+            importDate: Date.now(),
+            messageCount: 0,
+            callCount: result.callsImported,
+            type: 'calls',
+          };
+          recordImport(metadata);
+        } catch (error) {
+          result.errors.push(`Failed to record import metadata: ${error}`);
+        }
+      }
+
+      result.success = result.errors.length === 0 || result.callsImported > 0;
+      emitProgress('complete');
+      console.log('[calls-parser] Parse complete:', result.callsImported, 'calls imported,', result.duplicatesSkipped, 'duplicates skipped');
+
+    } catch (error) {
+      console.error('[calls-parser] Parse error:', error);
+      result.errors.push(`Parse failed: ${error}`);
+    }
+
+    return result;
   }
 }
 

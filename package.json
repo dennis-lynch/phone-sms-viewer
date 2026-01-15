@@ -1,6 +1,6 @@
 {
   "name": "phone-sms-viewer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A viewer to browse and search backed-up phone SMS and call logs",
   "main": "dist/main.js",
   "author": "Your Name",
@@ -29,7 +29,7 @@
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.6.0",
     "date-fns": "^4.1.0",
-    "sax": "^1.4.4"
+    "fast-xml-parser": "^5.3.3"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.2",
@@ -41,7 +41,6 @@
     "@types/node": "^25.0.6",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
-    "@types/sax": "^1.2.7",
     "@typescript-eslint/eslint-plugin": "^8.52.0",
     "@typescript-eslint/parser": "^8.52.0",
     "@vitejs/plugin-react": "^5.1.2",

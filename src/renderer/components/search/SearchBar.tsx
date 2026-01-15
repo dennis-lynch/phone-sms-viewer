@@ -1,14 +1,12 @@
 /**
  * Search Bar Component
  *
- * Text input with debounced search, clear button, and regex toggle.
- * Triggers search on Enter or after debounce delay.
+ * Text input with search button, clear button, and regex toggle.
+ * Triggers search on Enter key or Search button click.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchStore } from '../../store/searchStore';
-
-const DEBOUNCE_DELAY = 300; // milliseconds
 
 interface SearchBarProps {
   autoFocus?: boolean;
@@ -28,7 +26,6 @@ export function SearchBar({ autoFocus = false, onClose }: SearchBarProps) {
 
   const [localQuery, setLocalQuery] = useState(query);
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Sync local query with store
   useEffect(() => {
@@ -42,32 +39,21 @@ export function SearchBar({ autoFocus = false, onClose }: SearchBarProps) {
     }
   }, [autoFocus]);
 
-  // Debounced search
-  const debouncedSearch = useCallback(() => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-
-    debounceRef.current = setTimeout(() => {
-      setQuery(localQuery);
-      executeSearch();
-    }, DEBOUNCE_DELAY);
-  }, [localQuery, setQuery, executeSearch]);
-
-  // Handle input change
+  // Handle input change (no auto-search)
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setLocalQuery(e.target.value);
-    debouncedSearch();
+  };
+
+  // Execute search
+  const handleSearch = () => {
+    setQuery(localQuery);
+    executeSearch();
   };
 
   // Handle Enter key
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-      setQuery(localQuery);
-      executeSearch();
+      handleSearch();
     } else if (e.key === 'Escape') {
       onClose?.();
     }
@@ -83,20 +69,7 @@ export function SearchBar({ autoFocus = false, onClose }: SearchBarProps) {
   // Handle regex toggle
   const handleRegexToggle = () => {
     setUseRegex(!useRegex);
-    // Re-execute search with new setting if there's a query
-    if (localQuery.trim()) {
-      executeSearch();
-    }
   };
-
-  // Cleanup debounce on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-  }, []);
 
   return (
     <div className="flex items-center gap-2">
@@ -147,6 +120,20 @@ export function SearchBar({ autoFocus = false, onClose }: SearchBarProps) {
           </button>
         )}
       </div>
+
+      {/* Search button */}
+      <button
+        onClick={handleSearch}
+        disabled={isSearching || !localQuery.trim()}
+        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+          isSearching || !localQuery.trim()
+            ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+            : 'bg-blue-600 text-white hover:bg-blue-500'
+        }`}
+        title="Search (Enter)"
+      >
+        {isSearching ? 'Searching...' : 'Search'}
+      </button>
 
       {/* Regex toggle */}
       <button
