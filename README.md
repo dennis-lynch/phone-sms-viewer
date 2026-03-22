@@ -57,7 +57,7 @@ npm run rebuild
 
 ### Importing a Backup
 
-1. Launch the app (`npm run dev` or open the packaged installer)
+1. Launch the app (`npm run build && npm start` or open the packaged installer)
 2. Press **Ctrl+O** or use **File → Open Backup**
 3. Select a `.xml` or `.zip` backup file
 4. An import progress dialog shows status — large files may take a few seconds

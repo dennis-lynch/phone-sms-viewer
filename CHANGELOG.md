@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-22
+
+### Changed
+- Conversations now load the newest messages first (like a normal chat app) instead of the oldest 500
+- "Load earlier messages" now correctly loads older messages by prepending them
+- Scroll position is preserved when loading earlier messages
+
+### Fixed
+- Conversation date range in header now shows the full range across all messages, not just the first 500 loaded
+
 ## [1.1.0] - 2026-03-22
 
 ### Added

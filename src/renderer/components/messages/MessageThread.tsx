@@ -107,6 +107,7 @@ export function MessageThread() {
   const parentRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
   const prevMessageCount = useRef(0);
+  const prevFirstMessageId = useRef<number | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<ConversationTab>('messages');
 
@@ -115,20 +116,11 @@ export function MessageThread() {
     return conversations.find((c) => c.id === selectedConversationId);
   }, [conversations, selectedConversationId]);
 
-  // Calculate date range from messages
+  // Get date range from conversation stats (covers ALL messages, not just loaded ones)
   const dateRange = useMemo(() => {
-    if (messages.length === 0) return null;
-
-    let min = messages[0].timestamp;
-    let max = messages[0].timestamp;
-
-    for (const msg of messages) {
-      if (msg.timestamp < min) min = msg.timestamp;
-      if (msg.timestamp > max) max = msg.timestamp;
-    }
-
-    return { min, max };
-  }, [messages]);
+    if (!conversation || !conversation.firstMessageDate) return null;
+    return { min: conversation.firstMessageDate, max: conversation.lastMessageDate };
+  }, [conversation]);
 
   // Create flat list of virtual items
   const virtualItems = useMemo(() => {
@@ -181,29 +173,38 @@ export function MessageThread() {
     }
   }, [findMessageIndexForDate, virtualizer, virtualItems]);
 
-  // Scroll to bottom on initial load or when new messages arrive at the end
+  // Scroll to bottom on initial load, or preserve position when older messages are prepended
   useEffect(() => {
     if (messages.length > 0 && parentRef.current) {
       const isNewConversation = isInitialLoad.current;
       const hasNewMessages = messages.length > prevMessageCount.current;
+      const firstMsgId = messages[0]?.id ?? null;
+      const wasPrepend = hasNewMessages && prevFirstMessageId.current !== null && firstMsgId !== prevFirstMessageId.current;
 
       if (isNewConversation) {
         // Scroll to bottom for new conversation
         virtualizer.scrollToIndex(virtualItems.length - 1, { align: 'end' });
         isInitialLoad.current = false;
-      } else if (hasNewMessages && !hasMoreMessages) {
-        // If messages were added at the end (not loaded from top), scroll to bottom
-        virtualizer.scrollToIndex(virtualItems.length - 1, { align: 'end' });
+      } else if (wasPrepend) {
+        // Older messages were prepended — scroll to where the user was
+        const prevIdx = virtualItems.findIndex(
+          (item) => item.type === 'message' && item.message.id === prevFirstMessageId.current
+        );
+        if (prevIdx >= 0) {
+          virtualizer.scrollToIndex(prevIdx, { align: 'start' });
+        }
       }
 
       prevMessageCount.current = messages.length;
+      prevFirstMessageId.current = firstMsgId;
     }
-  }, [messages, virtualItems.length, hasMoreMessages, virtualizer]);
+  }, [messages, virtualItems, hasMoreMessages, virtualizer]);
 
   // Reset initial load flag when conversation changes
   useEffect(() => {
     isInitialLoad.current = true;
     prevMessageCount.current = 0;
+    prevFirstMessageId.current = null;
     setHighlightedMessageId(null);
     setActiveTab('messages');
   }, [selectedConversationId]);

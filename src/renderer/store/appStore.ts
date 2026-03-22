@@ -50,6 +50,7 @@ export interface AppState {
   messagesLoading: boolean;
   messagesError: string | null;
   hasMoreMessages: boolean;
+  messagesOffset: number;
 
   // Import state
   import: ImportState;
@@ -100,6 +101,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   messagesLoading: false,
   messagesError: null,
   hasMoreMessages: false,
+  messagesOffset: 0,
 
   import: {
     isImporting: false,
@@ -144,18 +146,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       messagesLoading: id !== null,
       messagesError: null,
       hasMoreMessages: false,
+      messagesOffset: 0,
     });
 
     if (id === null) return;
 
     try {
-      const messages = await databaseService.getMessages(id, MESSAGES_PER_PAGE, 0);
       const totalCount = await databaseService.getMessageCount(id);
+      const offset = Math.max(0, totalCount - MESSAGES_PER_PAGE);
+      const messages = await databaseService.getMessages(id, MESSAGES_PER_PAGE, offset);
 
       set({
         messages,
         messagesLoading: false,
-        hasMoreMessages: messages.length < totalCount,
+        hasMoreMessages: offset > 0,
+        messagesOffset: offset,
       });
     } catch (error) {
       set({
@@ -166,26 +171,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   loadMoreMessages: async () => {
-    const { selectedConversationId, messages, messagesLoading, hasMoreMessages } = get();
+    const { selectedConversationId, messages, messagesLoading, hasMoreMessages, messagesOffset } = get();
 
     if (!selectedConversationId || messagesLoading || !hasMoreMessages) return;
 
     set({ messagesLoading: true });
 
     try {
-      const moreMessages = await databaseService.getMessages(
+      const newOffset = Math.max(0, messagesOffset - MESSAGES_PER_PAGE);
+      const batchSize = messagesOffset - newOffset;
+      const olderMessages = await databaseService.getMessages(
         selectedConversationId,
-        MESSAGES_PER_PAGE,
-        messages.length
+        batchSize,
+        newOffset
       );
 
-      const totalCount = await databaseService.getMessageCount(selectedConversationId);
-      const allMessages = [...messages, ...moreMessages];
+      const allMessages = [...olderMessages, ...messages];
 
       set({
         messages: allMessages,
         messagesLoading: false,
-        hasMoreMessages: allMessages.length < totalCount,
+        hasMoreMessages: newOffset > 0,
+        messagesOffset: newOffset,
       });
     } catch (error) {
       set({
