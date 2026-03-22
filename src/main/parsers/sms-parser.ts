@@ -68,6 +68,7 @@ interface ParsedMms {
   type?: string;
   msg_box?: string;
   contact_name?: string;
+  m_size?: string;
   parts?: { part?: ParsedMmsPart | ParsedMmsPart[] };
   addrs?: { addr?: ParsedMmsAddr | ParsedMmsAddr[] };
   [key: string]: unknown;
@@ -178,6 +179,7 @@ export class SmsParser extends EventEmitter {
           originalPhone: address,
           normalizedPhone,
           contactName: contactName || '',
+          mSize: 0,
         });
 
         if (messageBatch.length >= BATCH_SIZE) {
@@ -201,6 +203,7 @@ export class SmsParser extends EventEmitter {
         let normalizedPhone = address ? normalizePhoneNumber(address) : '';
         let originalPhone = address;
         const contactName = mms.contact_name || '';
+        const mSize = parseInt(mms.m_size || '0', 10);
 
         // Extract address from <addr> elements if not in main attributes
         if (!normalizedPhone && mms.addrs?.addr) {
@@ -240,6 +243,7 @@ export class SmsParser extends EventEmitter {
                 originalPhone,
                 normalizedPhone,
                 contactName: contactName || '',
+                mSize,
               });
 
               if (messageBatch.length >= BATCH_SIZE) {

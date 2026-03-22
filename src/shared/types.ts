@@ -50,6 +50,7 @@ export interface Message {
   originalPhone: string;
   normalizedPhone: string;
   contactName: string;
+  mSize?: number; // Original message size from XML (mainly for MMS with media)
 }
 
 // Parsed and normalized call
@@ -75,7 +76,10 @@ export interface Conversation {
   callCount: number;
   lastMessageDate: number;
   firstMessageDate: number;
+  totalBodySize: number; // sum of message body lengths in bytes
 }
+
+export type ConversationSortOrder = 'recent' | 'size' | 'messages';
 
 // Import metadata tracking
 export interface ImportMetadata {

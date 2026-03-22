@@ -64,6 +64,13 @@ export function initializeDatabase(dbPath?: string): Database.Database {
   // Execute schema creation
   db.exec(SCHEMA_SQL);
 
+  // Migrate existing databases: add m_size column if missing
+  try {
+    db.exec('ALTER TABLE messages ADD COLUMN m_size INTEGER NOT NULL DEFAULT 0');
+  } catch {
+    // Column already exists, ignore
+  }
+
   // Register custom REGEXP function for regex search
   db.function('regexp', { deterministic: true }, (pattern: unknown, value: unknown) => {
     if (typeof pattern !== 'string' || typeof value !== 'string') {

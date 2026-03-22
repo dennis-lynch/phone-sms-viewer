@@ -11,6 +11,7 @@
 import { create } from 'zustand';
 import type {
   Conversation,
+  ConversationSortOrder,
   Message,
   ImportProgress,
   ImportResult,
@@ -41,6 +42,7 @@ export interface AppState {
   conversations: Conversation[];
   conversationsLoading: boolean;
   conversationsError: string | null;
+  conversationSortOrder: ConversationSortOrder;
 
   // Selected conversation
   selectedConversationId: number | null;
@@ -58,6 +60,7 @@ export interface AppState {
 
   // Actions
   loadConversations: () => Promise<void>;
+  setConversationSortOrder: (order: ConversationSortOrder) => Promise<void>;
   selectConversation: (id: number | null) => Promise<void>;
   loadMoreMessages: () => Promise<void>;
   refreshMessages: () => Promise<void>;
@@ -90,6 +93,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   conversations: [],
   conversationsLoading: false,
   conversationsError: null,
+  conversationSortOrder: 'recent',
 
   selectedConversationId: null,
   messages: [],
@@ -114,10 +118,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ============================================================================
 
   loadConversations: async () => {
+    const { conversationSortOrder } = get();
     set({ conversationsLoading: true, conversationsError: null });
 
     try {
-      const conversations = await databaseService.getConversations();
+      const conversations = await databaseService.getConversations(1000, 0, conversationSortOrder);
       set({ conversations, conversationsLoading: false });
     } catch (error) {
       set({
@@ -125,6 +130,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         conversationsLoading: false,
       });
     }
+  },
+
+  setConversationSortOrder: async (order: ConversationSortOrder) => {
+    set({ conversationSortOrder: order });
+    await get().loadConversations();
   },
 
   selectConversation: async (id: number | null) => {

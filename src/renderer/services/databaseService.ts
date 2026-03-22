@@ -7,6 +7,7 @@
 
 import type {
   Conversation,
+  ConversationSortOrder,
   Message,
   Call,
   SearchFilters,
@@ -41,10 +42,14 @@ function unwrapResponse<T>(response: { success: boolean; data?: T; error?: strin
 // ============================================================================
 
 /**
- * Gets all conversations, sorted by last message date
+ * Gets all conversations, sorted by last message date or total body size
  */
-export async function getConversations(limit = 1000, offset = 0): Promise<Conversation[]> {
-  const response = await window.electronAPI.getConversations(limit, offset);
+export async function getConversations(
+  limit = 1000,
+  offset = 0,
+  sortBy: ConversationSortOrder = 'recent'
+): Promise<Conversation[]> {
+  const response = await window.electronAPI.getConversations(limit, offset, sortBy);
   return unwrapResponse(response);
 }
 

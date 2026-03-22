@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS messages (
   original_phone TEXT NOT NULL,           -- Original phone format from backup
   normalized_phone TEXT NOT NULL,         -- E.164 format
   contact_name TEXT NOT NULL DEFAULT '',
+  m_size INTEGER NOT NULL DEFAULT 0,     -- Original message size from XML (for MMS with media)
   FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
   -- Deduplication constraint: same timestamp + phone + content = duplicate
   UNIQUE(timestamp, normalized_phone, body_hash)

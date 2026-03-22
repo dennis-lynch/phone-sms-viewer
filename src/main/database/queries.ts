@@ -11,6 +11,7 @@ import type {
   Message,
   Call,
   Conversation,
+  ConversationSortOrder,
   ImportMetadata,
   SearchFilters,
   SearchResult,
@@ -96,15 +97,31 @@ export function updateConversationStats(conversationId: number): void {
 }
 
 /**
- * Gets all conversations sorted by last message date
+ * Gets all conversations, optionally sorted by total message body size
  */
-export function getConversations(limit = 1000, offset = 0): Conversation[] {
+export function getConversations(
+  limit = 1000,
+  offset = 0,
+  sortBy: ConversationSortOrder = 'recent'
+): Conversation[] {
+  let orderClause: string;
+  if (sortBy === 'size') {
+    orderClause = 'ORDER BY total_body_size DESC';
+  } else if (sortBy === 'messages') {
+    orderClause = 'ORDER BY c.message_count DESC';
+  } else {
+    orderClause = 'ORDER BY c.last_message_date DESC';
+  }
+
   const rows = getDatabase()
     .prepare(
-      `SELECT id, phone_number, normalized_phone, contact_name,
-              message_count, call_count, first_message_date, last_message_date
-       FROM conversations
-       ORDER BY last_message_date DESC
+      `SELECT c.id, c.phone_number, c.normalized_phone, c.contact_name,
+              c.message_count, c.call_count, c.first_message_date, c.last_message_date,
+              COALESCE(SUM(CASE WHEN m.m_size > 0 THEN m.m_size ELSE LENGTH(m.body) END), 0) AS total_body_size
+       FROM conversations c
+       LEFT JOIN messages m ON c.id = m.conversation_id
+       GROUP BY c.id
+       ${orderClause}
        LIMIT ? OFFSET ?`
     )
     .all(limit, offset) as Array<{
@@ -116,6 +133,7 @@ export function getConversations(limit = 1000, offset = 0): Conversation[] {
     call_count: number;
     first_message_date: number | null;
     last_message_date: number | null;
+    total_body_size: number;
   }>;
 
   return rows.map((row) => ({
@@ -127,6 +145,7 @@ export function getConversations(limit = 1000, offset = 0): Conversation[] {
     callCount: row.call_count,
     firstMessageDate: row.first_message_date || 0,
     lastMessageDate: row.last_message_date || 0,
+    totalBodySize: row.total_body_size,
   }));
 }
 
@@ -136,9 +155,13 @@ export function getConversations(limit = 1000, offset = 0): Conversation[] {
 export function getConversationById(id: number): Conversation | null {
   const row = getDatabase()
     .prepare(
-      `SELECT id, phone_number, normalized_phone, contact_name,
-              message_count, call_count, first_message_date, last_message_date
-       FROM conversations WHERE id = ?`
+      `SELECT c.id, c.phone_number, c.normalized_phone, c.contact_name,
+              c.message_count, c.call_count, c.first_message_date, c.last_message_date,
+              COALESCE(SUM(CASE WHEN m.m_size > 0 THEN m.m_size ELSE LENGTH(m.body) END), 0) AS total_body_size
+       FROM conversations c
+       LEFT JOIN messages m ON c.id = m.conversation_id
+       WHERE c.id = ?
+       GROUP BY c.id`
     )
     .get(id) as
     | {
@@ -150,6 +173,7 @@ export function getConversationById(id: number): Conversation | null {
         call_count: number;
         first_message_date: number | null;
         last_message_date: number | null;
+        total_body_size: number;
       }
     | undefined;
 
@@ -164,6 +188,7 @@ export function getConversationById(id: number): Conversation | null {
     callCount: row.call_count,
     firstMessageDate: row.first_message_date || 0,
     lastMessageDate: row.last_message_date || 0,
+    totalBodySize: row.total_body_size,
   };
 }
 
@@ -181,8 +206,8 @@ export function insertMessage(message: Message): boolean {
     db.prepare(
       `INSERT INTO messages
          (conversation_id, type, direction, body, body_hash, timestamp,
-          original_phone, normalized_phone, contact_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          original_phone, normalized_phone, contact_name, m_size)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       message.conversationId,
       message.type,
@@ -192,7 +217,8 @@ export function insertMessage(message: Message): boolean {
       message.timestamp,
       message.originalPhone,
       message.normalizedPhone,
-      message.contactName
+      message.contactName,
+      message.mSize || 0
     );
     return true;
   } catch (error: unknown) {
@@ -215,8 +241,8 @@ export function insertMessagesBatch(messages: Message[]): number {
   const insertStmt = db.prepare(
     `INSERT OR IGNORE INTO messages
        (conversation_id, type, direction, body, body_hash, timestamp,
-        original_phone, normalized_phone, contact_name)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        original_phone, normalized_phone, contact_name, m_size)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   const transaction = db.transaction((msgs: Message[]) => {
@@ -230,7 +256,8 @@ export function insertMessagesBatch(messages: Message[]): number {
         msg.timestamp,
         msg.originalPhone,
         msg.normalizedPhone,
-        msg.contactName
+        msg.contactName,
+        msg.mSize || 0
       );
       if (result.changes > 0) {
         inserted++;

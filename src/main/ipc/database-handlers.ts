@@ -17,26 +17,29 @@ import {
   getImportHistory,
   getLastMessagePreview,
 } from '../database/queries';
-import type { SearchFilters } from '../../shared/types';
+import type { SearchFilters, ConversationSortOrder } from '../../shared/types';
 
 /**
  * Registers all database-related IPC handlers
  */
 export function registerDatabaseHandlers(): void {
   // Get all conversations
-  ipcMain.handle('get-conversations', async (_event, limit?: number, offset?: number) => {
-    try {
-      return {
-        success: true,
-        data: getConversations(limit, offset),
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: `Failed to get conversations: ${error}`,
-      };
+  ipcMain.handle(
+    'get-conversations',
+    async (_event, limit?: number, offset?: number, sortBy?: ConversationSortOrder) => {
+      try {
+        return {
+          success: true,
+          data: getConversations(limit, offset, sortBy),
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: `Failed to get conversations: ${error}`,
+        };
+      }
     }
-  });
+  );
 
   // Get a single conversation by ID
   ipcMain.handle('get-conversation', async (_event, conversationId: number) => {

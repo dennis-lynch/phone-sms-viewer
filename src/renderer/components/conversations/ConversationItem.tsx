@@ -13,6 +13,12 @@ import React from 'react';
 import type { Conversation } from '../../../shared/types';
 import { formatRelativeTime, truncatePreview, getInitials } from '../../services/databaseService';
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return '< 1 KB';
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 interface ConversationItemProps {
   conversation: Conversation;
   isSelected: boolean;
@@ -73,7 +79,7 @@ export function ConversationItem({
           )}
         </div>
 
-        {/* Bottom row: preview and count */}
+        {/* Bottom row: preview and badges */}
         <div className="flex items-center justify-between gap-2 mt-0.5">
           <span
             className={`text-sm truncate ${
@@ -82,19 +88,34 @@ export function ConversationItem({
           >
             {preview || 'No messages'}
           </span>
-          {conversation.messageCount > 0 && (
-            <span
-              className={`flex-none text-xs px-1.5 py-0.5 rounded-full ${
-                isSelected
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-700 text-gray-400'
-              }`}
-            >
-              {conversation.messageCount > 999
-                ? '999+'
-                : conversation.messageCount}
-            </span>
-          )}
+          <div className="flex-none flex items-center gap-1">
+            {conversation.totalBodySize > 0 && (
+              <span
+                className={`text-xs px-1.5 py-0.5 rounded-full ${
+                  isSelected
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-700 text-gray-400'
+                }`}
+                title="Total message size"
+              >
+                {formatSize(conversation.totalBodySize)}
+              </span>
+            )}
+            {conversation.messageCount > 0 && (
+              <span
+                className={`text-xs px-1.5 py-0.5 rounded-full ${
+                  isSelected
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-700 text-gray-400'
+                }`}
+                title="Message count"
+              >
+                {conversation.messageCount > 999
+                  ? '999+'
+                  : conversation.messageCount}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </button>

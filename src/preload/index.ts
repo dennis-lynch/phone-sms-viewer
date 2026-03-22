@@ -8,6 +8,7 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 import type {
   Conversation,
+  ConversationSortOrder,
   Message,
   Call,
   SearchFilters,
@@ -127,12 +128,13 @@ const api = {
   // Conversation Operations
   // ============================================================================
 
-  /** Gets all conversations, sorted by last message date */
+  /** Gets all conversations, sorted by last message date or total body size */
   getConversations: (
     limit?: number,
-    offset?: number
+    offset?: number,
+    sortBy?: ConversationSortOrder
   ): Promise<IpcResponse<Conversation[]>> => {
-    return ipcRenderer.invoke('get-conversations', limit, offset);
+    return ipcRenderer.invoke('get-conversations', limit, offset, sortBy);
   },
 
   /** Gets a single conversation by ID */
